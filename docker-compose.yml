@@ -1,6 +1,226 @@
-version: "3.9"
+name: finance-control
 
 services:
-  placeholder:
-    image: alpine
-    command: ["echo", "Infrastructure ready"]
+  frontend:
+    image: finance-control-frontend:local
+    build:
+      context: ../finance-control-frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-4200}:8080"
+    depends_on:
+      bff:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 5000
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+    expose:
+      - "1025"
+    volumes:
+      - mailpit-data:/data
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - edge-network
+      - services-network
+
+  bff:
+    image: finance-control-bff:local
+    build:
+      context: ../finance-control-bff
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Issuer: ${BFF_JWT_ISSUER:-finance-control-bff}
+      Jwt__Audience: ${BFF_JWT_AUDIENCE:-finance-control-frontend}
+      Jwt__Key: ${BFF_JWT_KEY:?BFF_JWT_KEY must be set}
+      Jwt__ExpiresMinutes: ${BFF_JWT_EXPIRES_MINUTES:-15}
+      AuthSession__RefreshTokenDays: ${BFF_REFRESH_TOKEN_DAYS:-30}
+      AuthSession__CookieName: finance_control_refresh
+      DataProtection__KeysPath: /var/lib/finance-control/keys
+      Email__Host: mailpit
+      Email__Port: 1025
+      Email__FromAddress: ${BFF_EMAIL_FROM_ADDRESS:-no-reply@financecontrol.local}
+      Email__FromName: ${BFF_EMAIL_FROM_NAME:-Finance Control}
+      Email__UserName: ""
+      Email__Password: ""
+      Email__Security: None
+      Email__FrontendBaseUrl: http://localhost:${FRONTEND_PORT:-4200}
+      DemoUser__Email: ${BFF_DEMO_EMAIL:-demo@financecontrol.local}
+      DemoUser__Password: ${BFF_DEMO_PASSWORD:?BFF_DEMO_PASSWORD must be set}
+      DemoUser__FriendEmail: ${BFF_FRIEND_EMAIL:-friend@financecontrol.local}
+      DemoUser__FriendPassword: ${BFF_FRIEND_PASSWORD:?BFF_FRIEND_PASSWORD must be set}
+      FinanceService__BaseUrl: http://finance-service:8081
+      FinanceService__TimeoutSeconds: ${FINANCE_SERVICE_TIMEOUT_SECONDS:-5}
+      DebtService__BaseUrl: http://debt-service:8082
+      DebtService__TimeoutSeconds: ${DEBT_SERVICE_TIMEOUT_SECONDS:-5}
+      Ai__Provider: ${AI_PROVIDER:-Mock}
+      Ai__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1/}
+      Ai__ApiKey: ${AI_API_KEY:-}
+      Ai__Model: ${AI_MODEL:-llama-3.1-8b-instant}
+      Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
+      Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-800}
+      Ai__UseJsonResponseFormat: ${AI_USE_JSON_RESPONSE_FORMAT:-false}
+      Ai__ApplicationUrl: ${AI_APPLICATION_URL:-}
+      Ai__ApplicationName: ${AI_APPLICATION_NAME:-Finance Control}
+      ConnectionStrings__BffDatabase: Host=bff-db;Port=5432;Database=${BFF_DB_NAME:-finance_control_bff};Username=${BFF_DB_USER:-bff_app};Password=${BFF_DB_PASSWORD:?BFF_DB_PASSWORD must be set}
+    ports:
+      - "${BFF_PORT:-8080}:8080"
+    volumes:
+      - bff-data-protection-keys:/var/lib/finance-control/keys
+    depends_on:
+      bff-db:
+        condition: service_healthy
+      finance-service:
+        condition: service_healthy
+      debt-service:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3']
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    networks:
+      - edge-network
+      - services-network
+      - bff-data-network
+
+  finance-service:
+    image: finance-control-finance-service:local
+    build:
+      context: ../finance-control-finance-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://finance-db:5432/${FINANCE_DB_NAME:-finance_control_finance}
+      SPRING_DATASOURCE_USERNAME: ${FINANCE_DB_USER:-finance_app}
+      SPRING_DATASOURCE_PASSWORD: ${FINANCE_DB_PASSWORD:?FINANCE_DB_PASSWORD must be set}
+    expose:
+      - "8081"
+    depends_on:
+      finance-db:
+        condition: service_healthy
+    networks:
+      - services-network
+      - finance-data-network
+
+  debt-service:
+    image: finance-control-debt-service:local
+    build:
+      context: ../finance-control-debt-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DebtDatabase: Host=debt-db;Port=5432;Database=${DEBT_DB_NAME:-finance_control_debt};Username=${DEBT_DB_USER:-debt_app};Password=${DEBT_DB_PASSWORD:?DEBT_DB_PASSWORD must be set}
+    expose:
+      - "8082"
+    depends_on:
+      debt-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8082 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3']
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    networks:
+      - services-network
+      - debt-data-network
+
+  bff-db:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BFF_DB_NAME:-finance_control_bff}
+      POSTGRES_USER: ${BFF_DB_USER:-bff_app}
+      POSTGRES_PASSWORD: ${BFF_DB_PASSWORD:?BFF_DB_PASSWORD must be set}
+    volumes:
+      - bff-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - bff-data-network
+
+  finance-db:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${FINANCE_DB_NAME:-finance_control_finance}
+      POSTGRES_USER: ${FINANCE_DB_USER:-finance_app}
+      POSTGRES_PASSWORD: ${FINANCE_DB_PASSWORD:?FINANCE_DB_PASSWORD must be set}
+    volumes:
+      - finance-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - finance-data-network
+
+  debt-db:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DEBT_DB_NAME:-finance_control_debt}
+      POSTGRES_USER: ${DEBT_DB_USER:-debt_app}
+      POSTGRES_PASSWORD: ${DEBT_DB_PASSWORD:?DEBT_DB_PASSWORD must be set}
+    volumes:
+      - debt-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - debt-data-network
+
+networks:
+  edge-network:
+    driver: bridge
+  services-network:
+    driver: bridge
+    internal: true
+  bff-data-network:
+    driver: bridge
+    internal: true
+  finance-data-network:
+    driver: bridge
+    internal: true
+  debt-data-network:
+    driver: bridge
+    internal: true
+
+volumes:
+  bff-db-data:
+  bff-data-protection-keys:
+  finance-db-data:
+  debt-db-data:
+  mailpit-data:
