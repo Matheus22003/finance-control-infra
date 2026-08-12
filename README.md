@@ -78,6 +78,14 @@ docker compose logs --follow
 docker compose logs --follow frontend bff finance-service debt-service
 ```
 
+## Integração contínua
+
+O workflow `.github/workflows/ci.yml` é executado em pushes e pull requests para
+`main` e `develop`, além de permitir execução manual com referências específicas
+dos demais repositórios. A pipeline valida o Compose, constrói e sobe o stack
+completo, verifica os endpoints `/health` do Frontend e do BFF e remove todos os
+containers e volumes temporários ao terminar.
+
 ## Parar o ambiente
 
 Preserva os dados PostgreSQL:

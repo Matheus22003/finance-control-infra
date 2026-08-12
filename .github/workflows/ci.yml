@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: Referência do Frontend
+        required: true
+        default: develop
+        type: string
+      bff_ref:
+        description: Referência do BFF
+        required: true
+        default: develop
+        type: string
+      finance_service_ref:
+        description: Referência do Finance Service
+        required: true
+        default: develop
+        type: string
+      debt_service_ref:
+        description: Referência do Debt Service
+        required: true
+        default: develop
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose:
+    name: Docker Compose e health checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout da infraestrutura
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: workspace/finance-control-infra
+          persist-credentials: false
+
+      - name: Checkout do Frontend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Matheus22003/finance-control-frontend
+          ref: ${{ inputs.frontend_ref || 'develop' }}
+          path: workspace/finance-control-frontend
+          persist-credentials: false
+
+      - name: Checkout do BFF
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Matheus22003/finance-control-bff
+          ref: ${{ inputs.bff_ref || 'develop' }}
+          path: workspace/finance-control-bff
+          persist-credentials: false
+
+      - name: Checkout do Finance Service
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Matheus22003/finance-control-finance-service
+          ref: ${{ inputs.finance_service_ref || 'develop' }}
+          path: workspace/finance-control-finance-service
+          persist-credentials: false
+
+      - name: Checkout do Debt Service
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Matheus22003/finance-control-debt-service
+          ref: ${{ inputs.debt_service_ref || 'develop' }}
+          path: workspace/finance-control-debt-service
+          persist-credentials: false
+
+      - name: Validar configuração do Compose
+        working-directory: workspace/finance-control-infra
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Subir stack completo
+        working-directory: workspace/finance-control-infra
+        run: docker compose --env-file .env.example up --build --detach --wait
+
+      - name: Validar endpoints públicos
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:4200/health
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:8080/health
+
+      - name: Publicar logs em caso de falha
+        if: failure()
+        working-directory: workspace/finance-control-infra
+        run: docker compose --env-file .env.example logs --no-color
+
+      - name: Remover stack temporário
+        if: always()
+        working-directory: workspace/finance-control-infra
+        run: docker compose --env-file .env.example down --volumes --remove-orphans
