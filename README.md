@@ -78,6 +78,17 @@ docker compose logs --follow
 docker compose logs --follow frontend bff finance-service debt-service
 ```
 
+As requisições recebem o header `X-Correlation-ID`, preservado pelo BFF nas
+chamadas aos dois serviços. Para localizar uma operação completa nos logs JSON,
+copie o UUID retornado pela API e execute:
+
+```powershell
+docker compose logs bff finance-service debt-service | Select-String "UUID_AQUI"
+```
+
+Os logs registram método, caminho, status e duração, mas não incluem payloads,
+tokens ou parâmetros de consulta.
+
 ## Integração contínua
 
 O workflow `.github/workflows/ci.yml` é executado em pushes e pull requests para
