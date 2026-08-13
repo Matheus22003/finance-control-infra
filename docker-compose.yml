@@ -56,6 +56,7 @@ services:
       Jwt__ExpiresMinutes: ${BFF_JWT_EXPIRES_MINUTES:-15}
       AuthSession__RefreshTokenDays: ${BFF_REFRESH_TOKEN_DAYS:-30}
       AuthSession__CookieName: finance_control_refresh
+      RateLimiting__AuthSensitivePermitLimit: ${BFF_AUTH_SENSITIVE_PERMIT_LIMIT:-10}
       DataProtection__KeysPath: /var/lib/finance-control/keys
       Email__Host: mailpit
       Email__Port: 1025
