@@ -35,11 +35,14 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: 26.4.0
+
 jobs:
   compose:
-    name: Docker Compose e health checks
+    name: Docker Compose, health checks e E2E
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 50
 
     steps:
       - name: Checkout da infraestrutura
@@ -80,12 +83,29 @@ jobs:
           path: workspace/finance-control-debt-service
           persist-credentials: false
 
+      - name: Configurar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: workspace/finance-control-frontend/package-lock.json
+
+      - name: Instalar dependências do frontend
+        working-directory: workspace/finance-control-frontend
+        run: npm ci --ignore-scripts
+
+      - name: Instalar Chromium do Playwright
+        working-directory: workspace/finance-control-frontend
+        run: npm exec playwright install --with-deps chromium
+
       - name: Validar configuração do Compose
         working-directory: workspace/finance-control-infra
         run: docker compose --env-file .env.example config --quiet
 
       - name: Subir stack completo
         working-directory: workspace/finance-control-infra
+        env:
+          BFF_AUTH_SENSITIVE_PERMIT_LIMIT: 1000
         run: docker compose --env-file .env.example up --build --detach --wait
 
       - name: Validar endpoints públicos
@@ -93,10 +113,28 @@ jobs:
           curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:4200/health
           curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:8080/health
 
+      - name: Executar testes E2E no stack descartável
+        working-directory: workspace/finance-control-frontend
+        env:
+          E2E_BASE_URL: http://localhost:4200
+          E2E_ISOLATED: true
+        run: npm exec playwright test
+
       - name: Publicar logs em caso de falha
         if: failure()
         working-directory: workspace/finance-control-infra
         run: docker compose --env-file .env.example logs --no-color
+
+      - name: Publicar diagnóstico E2E em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: infra-e2e-diagnostics-${{ github.run_id }}
+          path: |
+            workspace/finance-control-frontend/test-results
+            workspace/finance-control-frontend/playwright-report
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Remover stack temporário
         if: always()

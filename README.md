@@ -94,8 +94,24 @@ tokens ou parâmetros de consulta.
 O workflow `.github/workflows/ci.yml` é executado em pushes e pull requests para
 `main` e `develop`, além de permitir execução manual com referências específicas
 dos demais repositórios. A pipeline valida o Compose, constrói e sobe o stack
-completo, verifica os endpoints `/health` do Frontend e do BFF e remove todos os
-containers e volumes temporários ao terminar.
+completo, verifica os endpoints `/health` do Frontend e do BFF e executa a suíte
+Playwright contra os containers e bancos descartáveis.
+
+Os cenários automatizados cobrem autenticação e restauração de sessão, receitas,
+despesas, categorias personalizadas, orçamento, metas, recorrências, dashboard,
+análise e perguntas à IA mock, amizades, grupos, edição de dívida e pagamento
+simplificado entre duas contas. Em caso de falha, o GitHub Actions publica por
+sete dias o relatório HTML, traces, screenshots e vídeos do Playwright, além dos
+logs do Docker Compose. Ao final, containers e volumes temporários são removidos.
+
+Para executar a mesma suíte completa localmente a partir do frontend:
+
+```powershell
+cd ..\finance-control-frontend
+npm ci --ignore-scripts
+npm exec playwright install chromium
+npm run test:e2e:isolated
+```
 
 ## Parar o ambiente
 
