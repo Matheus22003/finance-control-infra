@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Compose de staging para OCI ARM64 sem bancos locais;
+- Caddy com TLS, WebSocket e validação do origin secret do Cloudflare Worker;
+- contrato de variáveis para três PostgreSQL Neon, Brevo e Groq;
+- Terraform `1.13.3` com provider OCI `8.25.0` para uma VM Always Free;
+- cloud-init com Docker, Compose e usuário de deploy endurecido.
+
 ## [0.1.0] - 2026-08-13
 
 ### Added

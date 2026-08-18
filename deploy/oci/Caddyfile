@@ -1,0 +1,21 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$BFF_PUBLIC_HOST} {
+	encode zstd gzip
+
+	@health path /health
+	handle @health {
+		reverse_proxy bff:8080
+	}
+
+	@verified header X-Origin-Verify {$ORIGIN_VERIFY_TOKEN}
+	handle @verified {
+		reverse_proxy bff:8080 {
+			flush_interval -1
+		}
+	}
+
+	respond 404
+}

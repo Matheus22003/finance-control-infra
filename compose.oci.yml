@@ -1,0 +1,131 @@
+name: finance-control-staging
+
+services:
+  edge:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+      BFF_PUBLIC_HOST: ${BFF_PUBLIC_HOST:?BFF_PUBLIC_HOST must be set}
+      ORIGIN_VERIFY_TOKEN: ${ORIGIN_VERIFY_TOKEN:?ORIGIN_VERIFY_TOKEN must be set}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/oci/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      bff:
+        condition: service_healthy
+    networks:
+      - edge-network
+    mem_limit: 256m
+    cpus: 0.25
+
+  bff:
+    image: ${BFF_IMAGE:?BFF_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Issuer: ${BFF_JWT_ISSUER:-finance-control-bff}
+      Jwt__Audience: ${BFF_JWT_AUDIENCE:-finance-control-frontend}
+      Jwt__Key: ${BFF_JWT_KEY:?BFF_JWT_KEY must be set}
+      Jwt__ExpiresMinutes: ${BFF_JWT_EXPIRES_MINUTES:-15}
+      AuthSession__RefreshTokenDays: ${BFF_REFRESH_TOKEN_DAYS:-30}
+      AuthSession__CookieName: finance_control_refresh
+      RateLimiting__AuthSensitivePermitLimit: ${BFF_AUTH_SENSITIVE_PERMIT_LIMIT:-10}
+      Email__Provider: Brevo
+      Email__FromAddress: ${BFF_EMAIL_FROM_ADDRESS:?BFF_EMAIL_FROM_ADDRESS must be set}
+      Email__FromName: ${BFF_EMAIL_FROM_NAME:-Finance Control}
+      Email__ApiBaseUrl: https://api.brevo.com/v3/
+      Email__ApiKey: ${BREVO_API_KEY:?BREVO_API_KEY must be set}
+      Email__TimeoutSeconds: ${BREVO_TIMEOUT_SECONDS:-30}
+      Email__FrontendBaseUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      DemoUser__Email: ${BFF_DEMO_EMAIL:?BFF_DEMO_EMAIL must be set}
+      DemoUser__Password: ${BFF_DEMO_PASSWORD:?BFF_DEMO_PASSWORD must be set}
+      DemoUser__FriendEmail: ${BFF_FRIEND_EMAIL:-}
+      DemoUser__FriendPassword: ${BFF_FRIEND_PASSWORD:-}
+      FinanceService__BaseUrl: http://finance-service:8081
+      FinanceService__TimeoutSeconds: ${FINANCE_SERVICE_TIMEOUT_SECONDS:-10}
+      DebtService__BaseUrl: http://debt-service:8082
+      DebtService__TimeoutSeconds: ${DEBT_SERVICE_TIMEOUT_SECONDS:-10}
+      Ai__Provider: ${AI_PROVIDER:-OpenAiCompatible}
+      Ai__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1/}
+      Ai__ApiKey: ${AI_API_KEY:?AI_API_KEY must be set}
+      Ai__Model: ${AI_MODEL:-llama-3.1-8b-instant}
+      Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
+      Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-800}
+      Ai__UseJsonResponseFormat: ${AI_USE_JSON_RESPONSE_FORMAT:-false}
+      Ai__ApplicationUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      Ai__ApplicationName: ${AI_APPLICATION_NAME:-Finance Control}
+      ConnectionStrings__BffDatabase: ${BFF_DATABASE_CONNECTION_STRING:?BFF_DATABASE_CONNECTION_STRING must be set}
+    expose:
+      - "8080"
+    depends_on:
+      finance-service:
+        condition: service_healthy
+      debt-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    networks:
+      - edge-network
+      - services-network
+    mem_limit: 1536m
+    cpus: 0.50
+
+  finance-service:
+    image: ${FINANCE_IMAGE:?FINANCE_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: ${FINANCE_DATABASE_JDBC_URL:?FINANCE_DATABASE_JDBC_URL must be set}
+      SPRING_DATASOURCE_USERNAME: ${FINANCE_DATABASE_USERNAME:?FINANCE_DATABASE_USERNAME must be set}
+      SPRING_DATASOURCE_PASSWORD: ${FINANCE_DATABASE_PASSWORD:?FINANCE_DATABASE_PASSWORD must be set}
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 10
+    networks:
+      - services-network
+    mem_limit: 2g
+    cpus: 0.75
+
+  debt-service:
+    image: ${DEBT_IMAGE:?DEBT_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DebtDatabase: ${DEBT_DATABASE_CONNECTION_STRING:?DEBT_DATABASE_CONNECTION_STRING must be set}
+    expose:
+      - "8082"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8082 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    networks:
+      - services-network
+    mem_limit: 1g
+    cpus: 0.50
+
+networks:
+  edge-network:
+    driver: bridge
+  services-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:

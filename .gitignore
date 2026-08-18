@@ -1,2 +1,8 @@
 .env
+.env.oci
 *.local
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
