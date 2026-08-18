@@ -2,6 +2,11 @@
 
 Infraestrutura local completa do Finance Control com Docker Compose.
 
+O repositório também contém a infraestrutura de staging aprovada: Cloudflare
+Pages/Worker no edge, uma VM OCI Ampere A1 para os backends e três projetos
+PostgreSQL independentes no Neon. O ambiente local descrito abaixo permanece
+inalterado.
+
 ## Serviços
 
 | Serviço | Porta publicada | Acesso |
@@ -129,7 +134,7 @@ docker compose down --volumes
 
 ## Bancos e migrations
 
-O Finance Service usa seu PostgreSQL e controla o schema com Flyway. Debt Service e BFF usam bancos PostgreSQL independentes e migrations do Entity Framework Core. O BFF persiste Identity, sessões e notificações. As chaves que protegem os links de e-mail ficam em um volume dedicado, portanto continuam válidas depois de reiniciar o container.
+O Finance Service usa seu PostgreSQL e controla o schema com Flyway. Debt Service e BFF usam bancos PostgreSQL independentes e migrations do Entity Framework Core. O BFF persiste Identity, sessões, notificações e chaves Data Protection no próprio banco exclusivo, portanto links de segurança continuam válidos depois de reiniciar ou recriar o container.
 
 ## Análise inteligente
 
@@ -151,3 +156,39 @@ docker compose up --detach --build --wait bff
 ```
 
 Como alternativa de testes, use `https://openrouter.ai/api/v1/` e o modelo `openrouter/free`. A integração permanece restrita ao BFF; frontend e microserviços nunca acessam o provedor diretamente. Não versione o arquivo `.env` nem uma chave real.
+
+## Staging gratuito na OCI
+
+Os artefatos de staging são separados do Compose local:
+
+| Caminho | Responsabilidade |
+|---|---|
+| `compose.oci.yml` | Caddy, BFF, Finance e Debt usando imagens multiarch |
+| `.env.oci.example` | contrato completo de configuração sem secrets reais |
+| `deploy/oci/Caddyfile` | TLS, SignalR e proteção da origem por header secreto |
+| `terraform/oci` | VCN, firewall, subnet e VM A1 Always Free |
+
+Para o TLS sem comprar domínio, registre um subdomínio gratuito no DuckDNS,
+aponte-o ao output `public_ipv4` do Terraform e use o hostname em
+`BFF_PUBLIC_HOST`. O token do DuckDNS não precisa entrar na VM nem no Terraform;
+atualize o endereço manualmente apenas se a VM for recriada com outro IP.
+
+Os bancos não são containers nesse ambiente. Cada serviço recebe somente a
+conexão TLS do próprio projeto Neon. Para validar o Compose sem revelar secrets,
+copie o exemplo para um arquivo ignorado e substitua os placeholders:
+
+```bash
+cp .env.oci.example .env.oci
+chmod 600 .env.oci
+docker compose --env-file .env.oci -f compose.oci.yml config --quiet
+docker compose --env-file .env.oci -f compose.oci.yml up --detach --wait
+```
+
+Somente o Caddy publica portas. BFF, Finance e Debt não possuem `ports` e se
+comunicam por nomes internos do Compose. O `ORIGIN_VERIFY_TOKEN` deve ser igual
+ao secret configurado no Cloudflare Pages Worker.
+
+As imagens referenciadas em `.env.oci` são publicadas pelos workflows dos três
+repositórios de backend. Após a primeira publicação, confirme no GitHub que cada
+package GHCR está com visibilidade `Public`; assim a VM pode baixar as imagens
+sem armazenar um token do GitHub.

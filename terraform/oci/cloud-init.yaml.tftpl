@@ -1,0 +1,30 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+ssh_pwauth: false
+disable_root: true
+
+users:
+  - default
+  - name: deploy
+    gecos: Finance Control deploy user
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+  - docker-compose-v2
+
+runcmd:
+  - systemctl enable --now docker
+  - usermod --append --groups docker deploy
+  - install -d -o deploy -g deploy -m 0750 /opt/finance-control
+  - install -d -o deploy -g deploy -m 0700 /opt/finance-control/secrets
+  - sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - systemctl restart ssh
