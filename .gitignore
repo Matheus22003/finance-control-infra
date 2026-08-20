@@ -1,5 +1,6 @@
-.env
-.env.oci
+.env*
+!.env.example
+!.env.oci.example
 *.local
 terraform.tfvars
 *.tfstate
