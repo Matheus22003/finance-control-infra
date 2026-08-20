@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+  >
+  <title>Conversor Neon | Finance Control</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #07111f;
+      --surface: #0d1b2d;
+      --surface-soft: #12243a;
+      --border: #263b56;
+      --text: #f7fafc;
+      --muted: #9fb2ca;
+      --primary: #2dd4bf;
+      --primary-hover: #5eead4;
+      --danger: #fb7185;
+      --success: #34d399;
+      --shadow: 0 22px 65px rgb(0 0 0 / 35%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 32px 18px;
+      background:
+        radial-gradient(circle at 15% 5%, rgb(45 212 191 / 12%), transparent 30%),
+        radial-gradient(circle at 90% 95%, rgb(59 130 246 / 12%), transparent 32%),
+        var(--background);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(820px, 100%);
+      padding: clamp(22px, 4vw, 40px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: rgb(13 27 45 / 94%);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--primary);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 5vw, 2.7rem);
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      max-width: 660px;
+      margin: 12px 0 28px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .security-note {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 26px;
+      padding: 14px 16px;
+      border: 1px solid rgb(45 212 191 / 30%);
+      border-radius: 14px;
+      background: rgb(45 212 191 / 7%);
+      color: #c6fff5;
+      line-height: 1.45;
+    }
+
+    .security-note strong {
+      color: var(--primary-hover);
+    }
+
+    .field {
+      margin-top: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    select,
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      outline: none;
+      background: var(--surface-soft);
+      color: var(--text);
+      font: inherit;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    select,
+    input {
+      min-height: 50px;
+      padding: 0 14px;
+    }
+
+    textarea {
+      min-height: 145px;
+      resize: vertical;
+      padding: 14px;
+      font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+
+    select:focus,
+    input:focus,
+    textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgb(45 212 191 / 14%);
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+
+    button {
+      min-height: 46px;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 18px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+      transition: transform 120ms ease, background 160ms ease, opacity 160ms ease;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .primary {
+      background: var(--primary);
+      color: #03201d;
+    }
+
+    .primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .secondary {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+
+    .secondary:hover {
+      background: rgb(255 255 255 / 5%);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .status {
+      min-height: 24px;
+      margin: 14px 0 0;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .status.success {
+      color: var(--success);
+    }
+
+    .output-section[hidden] {
+      display: none;
+    }
+
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .output-header h2 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .copy-button {
+      min-height: 38px;
+      padding: 0 14px;
+      background: rgb(45 212 191 / 12%);
+      color: var(--primary-hover);
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .detail {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgb(255 255 255 / 2%);
+    }
+
+    .detail span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+
+    .detail strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.84rem;
+    }
+
+    footer {
+      margin-top: 26px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px 12px;
+      }
+
+      main {
+        border-radius: 18px;
+      }
+
+      .input-row {
+        grid-template-columns: 1fr;
+      }
+
+      .details {
+        grid-template-columns: 1fr;
+      }
+
+      .actions button {
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Finance Control · ferramenta local</p>
+    <h1>Conversor de conexão Neon</h1>
+    <p class="subtitle">
+      Cole a URL fornecida pelo Neon e gere o formato exato esperado pelo BFF,
+      Debt Service ou Finance Service.
+    </p>
+
+    <div class="security-note" role="note">
+      <span aria-hidden="true">🔒</span>
+      <div>
+        <strong>Processamento 100% local.</strong>
+        Esta página não faz requisições de rede, não possui analytics e não salva a conexão no navegador.
+      </div>
+    </div>
+
+    <form id="converter-form" autocomplete="off" novalidate>
+      <div class="field">
+        <label for="target">Serviço de destino</label>
+        <select id="target" name="target">
+          <option value="bff">BFF (.NET / Npgsql)</option>
+          <option value="debt">Debt Service (.NET / Npgsql)</option>
+          <option value="finance">Finance Service (Java / JDBC)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="source">URL copiada do Neon</label>
+        <div class="input-row">
+          <input
+            id="source"
+            name="source"
+            type="password"
+            placeholder="postgresql://usuario:senha@host.neon.tech/banco?sslmode=require"
+            aria-describedby="status"
+            autocapitalize="off"
+            autocomplete="new-password"
+            spellcheck="false"
+          >
+          <button id="visibility-button" class="secondary" type="button" aria-pressed="false">
+            Mostrar
+          </button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" type="submit">Converter</button>
+        <button id="clear-button" class="secondary" type="button">Limpar tudo</button>
+      </div>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section id="output-section" class="output-section" hidden>
+      <div class="output-header">
+        <h2>Resultado para o arquivo .env.oci</h2>
+        <button id="copy-button" class="copy-button" type="button">Copiar resultado</button>
+      </div>
+      <textarea id="output" readonly spellcheck="false" aria-label="Resultado convertido"></textarea>
+      <div class="details" aria-label="Resumo da conexão">
+        <div class="detail">
+          <span>Host</span>
+          <strong id="host-detail"></strong>
+        </div>
+        <div class="detail">
+          <span>Banco</span>
+          <strong id="database-detail"></strong>
+        </div>
+        <div class="detail">
+          <span>TLS</span>
+          <strong>Obrigatório</strong>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Depois de copiar o resultado, cole-o em
+      <code>finance-control-infra/.env.oci</code>. Nunca cole uma conexão real no
+      <code>.env.oci.example</code> ou em arquivos versionados pelo Git.
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const targets = Object.freeze({
+        bff: {
+          database: 'finance_control_bff',
+          variable: 'BFF_DATABASE_CONNECTION_STRING',
+          type: 'npgsql'
+        },
+        debt: {
+          database: 'finance_control_debt',
+          variable: 'DEBT_DATABASE_CONNECTION_STRING',
+          type: 'npgsql'
+        },
+        finance: {
+          database: 'finance_control_finance',
+          type: 'jdbc'
+        }
+      });
+
+      const form = document.querySelector('#converter-form');
+      const targetInput = document.querySelector('#target');
+      const sourceInput = document.querySelector('#source');
+      const visibilityButton = document.querySelector('#visibility-button');
+      const clearButton = document.querySelector('#clear-button');
+      const copyButton = document.querySelector('#copy-button');
+      const outputSection = document.querySelector('#output-section');
+      const output = document.querySelector('#output');
+      const status = document.querySelector('#status');
+      const hostDetail = document.querySelector('#host-detail');
+      const databaseDetail = document.querySelector('#database-detail');
+
+      function setStatus(message, type = '') {
+        status.textContent = message;
+        status.className = `status ${type}`.trim();
+      }
+
+      function decodeComponent(value, fieldName) {
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          throw new Error(`${fieldName} contém caracteres percentuais inválidos.`);
+        }
+      }
+
+      function quoteNpgsql(value) {
+        return `"${value.replaceAll('"', '""')}"`;
+      }
+
+      function quoteEnv(value) {
+        return `'${value.replaceAll("'", "\\'")}'`;
+      }
+
+      function parseNeonUrl(rawValue) {
+        const normalized = rawValue.trim();
+        if (!normalized) {
+          throw new Error('Cole primeiro a URL fornecida pelo Neon.');
+        }
+
+        let parsed;
+        try {
+          parsed = new URL(normalized);
+        } catch {
+          throw new Error('A URL não pôde ser lida. Copie novamente a Connection string do Neon.');
+        }
+
+        if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+          throw new Error('A conexão deve começar com postgresql:// ou postgres://.');
+        }
+
+        const username = decodeComponent(parsed.username, 'O usuário');
+        const password = decodeComponent(parsed.password, 'A senha');
+        const database = decodeComponent(parsed.pathname.replace(/^\//, ''), 'O banco');
+        const port = parsed.port || '5432';
+
+        if (!parsed.hostname || !username || !password || !database) {
+          throw new Error('A conexão precisa conter host, usuário, senha e banco de dados.');
+        }
+
+        return {
+          host: parsed.hostname,
+          port,
+          username,
+          password,
+          database
+        };
+      }
+
+      function buildNpgsql(config, target) {
+        const connection = [
+          `Host=${quoteNpgsql(config.host)}`,
+          `Port=${config.port}`,
+          `Database=${quoteNpgsql(target.database)}`,
+          `Username=${quoteNpgsql(config.username)}`,
+          `Password=${quoteNpgsql(config.password)}`,
+          'SSL Mode=Require',
+          'Channel Binding=Require'
+        ].join(';');
+
+        return `${target.variable}=${quoteEnv(connection)}`;
+      }
+
+      function buildJdbc(config, target) {
+        const jdbcUrl = `jdbc:postgresql://${config.host}:${config.port}/${target.database}`
+          + '?sslmode=require&channelBinding=require';
+
+        return [
+          `FINANCE_DATABASE_JDBC_URL=${quoteEnv(jdbcUrl)}`,
+          `FINANCE_DATABASE_USERNAME=${quoteEnv(config.username)}`,
+          `FINANCE_DATABASE_PASSWORD=${quoteEnv(config.password)}`
+        ].join('\n');
+      }
+
+      function clearSensitiveData() {
+        sourceInput.value = '';
+        sourceInput.type = 'password';
+        visibilityButton.textContent = 'Mostrar';
+        visibilityButton.setAttribute('aria-pressed', 'false');
+        output.value = '';
+        outputSection.hidden = true;
+        hostDetail.textContent = '';
+        databaseDetail.textContent = '';
+        setStatus('Dados removidos desta página.', 'success');
+        sourceInput.focus();
+      }
+
+      async function copyOutput() {
+        const value = output.value;
+        if (!value) {
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch {
+          output.focus();
+          output.select();
+          const copied = document.execCommand('copy');
+          output.setSelectionRange(0, 0);
+          if (!copied) {
+            setStatus('Não foi possível copiar automaticamente. Selecione o resultado manualmente.', 'error');
+            return;
+          }
+        }
+
+        copyButton.textContent = 'Copiado';
+        setStatus('Resultado copiado. Cole-o no arquivo .env.oci e depois limpe esta página.', 'success');
+        window.setTimeout(() => {
+          copyButton.textContent = 'Copiar resultado';
+        }, 1800);
+      }
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        outputSection.hidden = true;
+        output.value = '';
+
+        try {
+          const config = parseNeonUrl(sourceInput.value);
+          const target = targets[targetInput.value];
+
+          if (config.database !== target.database) {
+            throw new Error(
+              `O Neon está fornecendo o banco “${config.database}”, mas este serviço exige `
+              + `“${target.database}”. Selecione o banco correto no modal Connect.`
+            );
+          }
+
+          if (!config.host.endsWith('.neon.tech')) {
+            throw new Error('O host não parece pertencer ao Neon. Confira a URL antes de continuar.');
+          }
+
+          output.value = target.type === 'npgsql'
+            ? buildNpgsql(config, target)
+            : buildJdbc(config, target);
+          hostDetail.textContent = config.host;
+          databaseDetail.textContent = target.database;
+          outputSection.hidden = false;
+          setStatus('Conversão concluída. A senha permanece apenas nesta página.', 'success');
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : 'Não foi possível converter a conexão.', 'error');
+        }
+      });
+
+      visibilityButton.addEventListener('click', () => {
+        const willShow = sourceInput.type === 'password';
+        sourceInput.type = willShow ? 'text' : 'password';
+        visibilityButton.textContent = willShow ? 'Ocultar' : 'Mostrar';
+        visibilityButton.setAttribute('aria-pressed', String(willShow));
+      });
+
+      clearButton.addEventListener('click', clearSensitiveData);
+      copyButton.addEventListener('click', copyOutput);
+
+      window.addEventListener('pagehide', () => {
+        sourceInput.value = '';
+        output.value = '';
+      });
+    })();
+  </script>
+</body>
+</html>

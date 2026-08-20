@@ -1,7 +1,7 @@
 # OCI Always Free com Terraform
 
 Este módulo cria somente a rede e uma VM ARM64 destinada ao staging. A
-configuração fixa a shape em `VM.Standard.A1.Flex`, 2 OCPUs, 12 GB de RAM e
+configuração fixa a shape em `VM.Standard.A1.Flex`, 1 OCPU, 6 GB de RAM e
 boot volume de 50 GB. Não existe fallback para recursos pagos.
 
 ## Pré-requisitos
@@ -27,7 +27,7 @@ terraform plan
 Antes de `terraform apply`, confirme no plano:
 
 - exatamente uma `VM.Standard.A1.Flex`;
-- exatamente 2 OCPUs e 12 GB;
+- exatamente 1 OCPU e 6 GB;
 - boot volume de 50 GB;
 - nenhuma Load Balancer, NAT Gateway, database ou shape adicional;
 - SSH restrito ao seu endereço `/32`.

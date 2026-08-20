@@ -184,6 +184,29 @@ docker compose --env-file .env.oci -f compose.oci.yml config --quiet
 docker compose --env-file .env.oci -f compose.oci.yml up --detach --wait
 ```
 
+### Projetos Neon
+
+O staging usa três projetos independentes no plano Free, todos em AWS South
+America East 1 (São Paulo), com PostgreSQL 17:
+
+| Projeto | Banco | Consumidor exclusivo |
+|---|---|---|
+| `finance-control-bff` | `finance_control_bff` | BFF |
+| `finance-control-finance-service` | `finance_control_finance` | Finance Service |
+| `finance-control-debt-service` | `finance_control_debt` | Debt Service |
+
+No painel de cada projeto, abra **Connect**, selecione o banco indicado e deixe
+**Pooled connection** desativado. Use a connection string direta porque BFF,
+Debt e Finance executam migrations na inicialização. Para BFF e Debt, converta
+os campos para o formato Npgsql mostrado em `.env.oci.example`. Para Finance,
+selecione Java/JDBC no painel e separe URL, usuário e senha nas três variáveis
+`FINANCE_DATABASE_*`.
+
+O arquivo `.env.oci` é ignorado pelo Git e deve ter permissão `600` na VM. Não
+use a conexão de um projeto em outro serviço. O plano Free fornece atualmente,
+por projeto, 100 CU-h mensais, 0,5 GB de armazenamento e 5 GB de transferência,
+com scale-to-zero após inatividade; acompanhe esses medidores no dashboard Neon.
+
 Somente o Caddy publica portas. BFF, Finance e Debt não possuem `ports` e se
 comunicam por nomes internos do Compose. O `ORIGIN_VERIFY_TOKEN` deve ser igual
 ao secret configurado no Cloudflare Pages Worker.
