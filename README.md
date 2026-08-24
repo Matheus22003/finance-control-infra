@@ -2,10 +2,14 @@
 
 Infraestrutura local completa do Finance Control com Docker Compose.
 
-O repositório também contém a infraestrutura de staging aprovada: Cloudflare
-Pages/Worker no edge, uma VM OCI Ampere A1 para os backends e três projetos
-PostgreSQL independentes no Neon. O ambiente local descrito abaixo permanece
-inalterado.
+Também existe um alvo de hospedagem própria para ZimaOS, preservando os
+containers atuais, os bancos independentes no Neon e o isolamento de acesso pelo
+BFF.
+
+A implantação pública atual usa Vercel para o Angular, zrok para o túnel até o
+ZimaOS e três bancos PostgreSQL independentes no Neon. Os arquivos de OCI e
+Cloudflare permanecem como uma alternativa histórica não ativa. O ambiente
+local descrito abaixo permanece inalterado.
 
 ## Serviços
 
@@ -208,10 +212,106 @@ por projeto, 100 CU-h mensais, 0,5 GB de armazenamento e 5 GB de transferência,
 com scale-to-zero após inatividade; acompanhe esses medidores no dashboard Neon.
 
 Somente o Caddy publica portas. BFF, Finance e Debt não possuem `ports` e se
-comunicam por nomes internos do Compose. O `ORIGIN_VERIFY_TOKEN` deve ser igual
-ao secret configurado no Cloudflare Pages Worker.
+comunicam por nomes internos do Compose. No alvo OCI legado, o
+`ORIGIN_VERIFY_TOKEN` deve ser igual ao secret configurado no Cloudflare Pages
+Worker. A implantação atual no ZimaOS não utiliza esse token.
+
+## Hospedagem própria no ZimaOS
+
+O arquivo `compose.zimaos.yml` executa Caddy, BFF, Finance Service e Debt Service
+sem publicar nenhuma porta do host. O profile opcional `public` acrescenta o
+agente zrok 2.0.4. Finance e Debt permanecem acessíveis apenas pelas redes do
+Compose; o túnel alcança somente o Caddy pela rede Docker privada e o Caddy
+encaminha as requisições ao BFF. Nenhuma porta do roteador, do host ou da WebUI
+do ZimaOS é publicada.
+
+Os limites atuais foram definidos para um host x86-64 com 4 cores/8 threads e
+16 GB de RAM que também executa um servidor Minecraft:
+
+| Serviço | Memória máxima | CPU máxima |
+|---|---:|---:|
+| Caddy | 128 MB | 0,10 |
+| zrok Agent | 256 MB | 0,25 |
+| BFF | 768 MB | 0,50 |
+| Finance Service | 1,5 GB | 0,75 |
+| Debt Service | 768 MB | 0,50 |
+
+Antes da instalação, crie um arquivo ignorado com os valores reais. O contrato
+é compatível com os secrets já usados pelo staging OCI:
+
+```bash
+cp .env.zimaos.example .env.zimaos
+chmod 600 .env.zimaos
+docker compose --env-file .env.zimaos -f compose.zimaos.yml config --quiet
+```
+
+Para iniciar os backends e validar os health checks sem exposição pública:
+
+```bash
+docker compose --env-file .env.zimaos -f compose.zimaos.yml up --detach --wait
+```
+
+Crie uma conta gratuita em `myzrok.io`, copie o account token para
+`ZROK2_ENABLE_TOKEN` e escolha um nome em `ZROK2_SHARE_NAME`. O token fica
+somente no arquivo ignorado com permissão `600`. Para habilitar o ambiente,
+reservar o nome e iniciar o compartilhamento persistente:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironment
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InitializePublicTunnel
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action PublicStatus
+```
+
+O helper cria uma share pública nomeada para `http://edge:8080`. Shares nomeadas
+são restauradas automaticamente pelo agente após reinícios. O volume
+`finance-control-zrok-environment` persiste somente a identidade do dispositivo
+e nunca deve ser removido em uma atualização comum. Não publique o console do
+agente, a WebUI do ZimaOS, BFF, Finance ou Debt e não abra portas no roteador.
 
 As imagens referenciadas em `.env.oci` são publicadas pelos workflows dos três
 repositórios de backend. Após a primeira publicação, confirme no GitHub que cada
 package GHCR está com visibilidade `Public`; assim a VM pode baixar as imagens
 sem armazenar um token do GitHub.
+
+### Acesso operacional seguro ao ZimaOS
+
+As credenciais administrativas não ficam no repositório. O inicializador cria
+`%USERPROFILE%\.finance-control`, restringe sua ACL ao usuário atual e ao
+`SYSTEM`, gera uma chave SSH Ed25519 e armazena a senha sudo com DPAPI. O XML
+criptografado só pode ser aberto pelo mesmo usuário no mesmo computador.
+
+Primeiro gere a chave e o arquivo de configuração, sem solicitar a senha:
+
+```powershell
+pwsh -File .\tools\Initialize-ZimaOsAccess.ps1 -SkipCredential
+```
+
+Autorize o conteúdo da chave pública indicada pelo comando no usuário do
+ZimaOS. Depois armazene a credencial sudo; a senha é solicitada de forma
+interativa e nunca é gravada em texto puro:
+
+```powershell
+pwsh -File .\tools\Initialize-ZimaOsAccess.ps1
+```
+
+O helper aceita somente operações predefinidas e não recebe comandos remotos
+arbitrários:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Status
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Health
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Logs -Service bff -Tail 200
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironment
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Deploy
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Restart
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InitializePublicTunnel
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action PublicStatus
+```
+
+`SyncEnvironment` transfere o `.env.oci` ignorado pelo Git por SSH, valida o
+Compose no servidor antes da substituição, instala o arquivo com permissão
+`600`, remove o upload temporário e recria somente BFF e Caddy.
+
+A chave privada, o arquivo DPAPI e o `known_hosts` permanecem fora de todos os
+repositórios. Não copie o cofre para outro computador: a criptografia não será
+decifrável fora da conta Windows que o criou.

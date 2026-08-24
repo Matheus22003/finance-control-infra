@@ -1,0 +1,27 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	log {
+		output stdout
+		format json
+	}
+
+	@health path /health
+	handle @health {
+		reverse_proxy bff:8080
+	}
+
+	# O edge nao publica portas no host. Somente o agente zrok conectado a
+	# edge-network consegue encaminhar trafego publico para este listener.
+	@trusted_tunnel remote_ip private_ranges
+	handle @trusted_tunnel {
+		reverse_proxy bff:8080
+	}
+
+	handle {
+		respond "Forbidden" 403
+	}
+}
