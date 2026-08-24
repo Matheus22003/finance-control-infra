@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs')]
+    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncEnvironmentOnly', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs')]
     [string]$Action = 'Status',
 
     [Parameter()]
@@ -100,7 +100,7 @@ $caddyUploadPath = '/DATA/.ssh/finance-control-caddy.upload'
 $autoUpdateUploadPath = '/DATA/.ssh/finance-control-auto-update.upload'
 $autoUpdateServiceUploadPath = '/DATA/.ssh/finance-control-auto-update-service.upload'
 $autoUpdateTimerUploadPath = '/DATA/.ssh/finance-control-auto-update-timer.upload'
-if ($Action -eq 'SyncEnvironment') {
+if ($Action -in @('SyncEnvironment', 'SyncEnvironmentOnly')) {
     $localEnvironmentPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\.env.oci'))
     if (-not (Test-Path -LiteralPath $localEnvironmentPath -PathType Leaf)) {
         throw 'Arquivo .env.oci local não encontrado.'
@@ -168,6 +168,9 @@ $operation = switch ($Action) {
     'SyncEnvironment' {
         "set -eu; trap 'rm -f /DATA/.ssh/finance-control-environment.upload' EXIT; docker compose --env-file /DATA/.ssh/finance-control-environment.upload -f compose.zimaos.yml config --quiet; install -o root -g root -m 600 /DATA/.ssh/finance-control-environment.upload .env.zimaos; $compose up --detach --wait bff edge"
     }
+    'SyncEnvironmentOnly' {
+        "set -eu; trap 'rm -f /DATA/.ssh/finance-control-environment.upload' EXIT; docker compose --env-file /DATA/.ssh/finance-control-environment.upload -f compose.zimaos.yml config --quiet; install -o root -g root -m 600 /DATA/.ssh/finance-control-environment.upload .env.zimaos; printf 'environment_synced=true\n'"
+    }
     'SyncDeployment' {
         $caddyImage = 'caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d'
         "set -eu; trap 'rm -f /DATA/.ssh/finance-control-compose.upload /DATA/.ssh/finance-control-caddy.upload' EXIT; docker compose --env-file .env.zimaos -f /DATA/.ssh/finance-control-compose.upload --profile public config --quiet; docker run --rm -v /DATA/.ssh/finance-control-caddy.upload:/etc/caddy/Caddyfile:ro $caddyImage caddy validate --config /etc/caddy/Caddyfile; install -d -o root -g root -m 755 deploy/zimaos; install -o root -g root -m 644 /DATA/.ssh/finance-control-compose.upload compose.zimaos.yml; install -o root -g root -m 644 /DATA/.ssh/finance-control-caddy.upload deploy/zimaos/Caddyfile; $publicCompose config --quiet"
@@ -225,7 +228,7 @@ $operation = switch ($Action) {
 $remoteDirectory = '/DATA/AppData/finance-control'
 $remoteBody = "cd $(ConvertTo-ShellSingleQuoted -Value $remoteDirectory) && $operation"
 $remoteCommand = "sudo -S -p '' /bin/sh -lc $(ConvertTo-ShellSingleQuoted -Value $remoteBody)"
-if ($Action -eq 'SyncEnvironment') {
+if ($Action -in @('SyncEnvironment', 'SyncEnvironmentOnly')) {
     $quotedUploadPath = ConvertTo-ShellSingleQuoted -Value $environmentUploadPath
     $remoteCommand = "test -s $quotedUploadPath && chmod 600 $quotedUploadPath && $remoteCommand"
 }

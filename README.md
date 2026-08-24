@@ -336,6 +336,7 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Status
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Health
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Logs -Service bff -Tail 200
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironment
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironmentOnly
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Deploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Restart
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InitializePublicTunnel
@@ -349,6 +350,9 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployLogs -Tail 
 `SyncEnvironment` transfere o `.env.oci` ignorado pelo Git por SSH, valida o
 Compose no servidor antes da substituição, instala o arquivo com permissão
 `600`, remove o upload temporário e recria somente BFF e Caddy.
+`SyncEnvironmentOnly` realiza a mesma sincronização segura sem recriar
+containers; use-o antes de `RunAutoDeploy` para preservar o snapshot das
+imagens atuais e permitir rollback automático.
 
 A chave privada, o arquivo DPAPI e o `known_hosts` permanecem fora de todos os
 repositórios. Não copie o cofre para outro computador: a criptografia não será
