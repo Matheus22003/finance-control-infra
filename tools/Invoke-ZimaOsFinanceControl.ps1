@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus')]
+    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs')]
     [string]$Action = 'Status',
 
     [Parameter()]
@@ -56,9 +56,11 @@ function Send-FileOverScp {
     [void]$scpInfo.ArgumentList.Add("$($AccessConfig.SshUser)@$($AccessConfig.ServerAddress):$RemotePath")
 
     $scpProcess = [System.Diagnostics.Process]::Start($scpInfo)
-    $scpOutput = $scpProcess.StandardOutput.ReadToEnd()
-    $scpError = $scpProcess.StandardError.ReadToEnd()
+    $scpOutputTask = $scpProcess.StandardOutput.ReadToEndAsync()
+    $scpErrorTask = $scpProcess.StandardError.ReadToEndAsync()
     $scpProcess.WaitForExit()
+    $scpOutput = $scpOutputTask.GetAwaiter().GetResult()
+    $scpError = $scpErrorTask.GetAwaiter().GetResult()
     if ($scpProcess.ExitCode -ne 0) {
         throw "Falha ao transferir '$LocalPath' pelo SSH. $scpOutput $scpError"
     }
@@ -95,6 +97,9 @@ if (-not (Test-Path -LiteralPath $config.CredentialPath -PathType Leaf)) {
 $environmentUploadPath = '/DATA/.ssh/finance-control-environment.upload'
 $composeUploadPath = '/DATA/.ssh/finance-control-compose.upload'
 $caddyUploadPath = '/DATA/.ssh/finance-control-caddy.upload'
+$autoUpdateUploadPath = '/DATA/.ssh/finance-control-auto-update.upload'
+$autoUpdateServiceUploadPath = '/DATA/.ssh/finance-control-auto-update-service.upload'
+$autoUpdateTimerUploadPath = '/DATA/.ssh/finance-control-auto-update-timer.upload'
 if ($Action -eq 'SyncEnvironment') {
     $localEnvironmentPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\.env.oci'))
     if (-not (Test-Path -LiteralPath $localEnvironmentPath -PathType Leaf)) {
@@ -115,6 +120,31 @@ if ($Action -eq 'SyncDeployment') {
 
     Send-FileOverScp -LocalPath $localComposePath -RemotePath $composeUploadPath -AccessConfig $config
     Send-FileOverScp -LocalPath $localCaddyPath -RemotePath $caddyUploadPath -AccessConfig $config
+}
+
+if ($Action -eq 'InstallAutoDeploy') {
+    $autoDeployDirectory = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\deploy\zimaos'))
+    $autoDeployFiles = @(
+        [pscustomobject]@{
+            LocalPath = Join-Path $autoDeployDirectory 'auto-update.sh'
+            RemotePath = $autoUpdateUploadPath
+        },
+        [pscustomobject]@{
+            LocalPath = Join-Path $autoDeployDirectory 'finance-control-auto-update.service'
+            RemotePath = $autoUpdateServiceUploadPath
+        },
+        [pscustomobject]@{
+            LocalPath = Join-Path $autoDeployDirectory 'finance-control-auto-update.timer'
+            RemotePath = $autoUpdateTimerUploadPath
+        }
+    )
+
+    foreach ($file in $autoDeployFiles) {
+        if (-not (Test-Path -LiteralPath $file.LocalPath -PathType Leaf)) {
+            throw "Arquivo da automação ausente: $($file.LocalPath)"
+        }
+        Send-FileOverScp -LocalPath $file.LocalPath -RemotePath $file.RemotePath -AccessConfig $config
+    }
 }
 
 $compose = 'docker compose --env-file .env.zimaos -f compose.zimaos.yml'
@@ -150,6 +180,46 @@ $operation = switch ($Action) {
         $publicStatus = 'set -eu; zrok2 agent status | grep -Fq "http://edge:8080"; printf "public_tunnel=active\npublic_url=https://%s.shares.zrok.io\n" "$ZROK2_SHARE_NAME"'
         "$publicCompose ps zrok-agent && $publicCompose exec -T zrok-agent sh -lc $(ConvertTo-ShellSingleQuoted -Value $publicStatus)"
     }
+    'AutomationInfo' {
+        "printf 'docker_compose='; docker compose version --short; " +
+        "printf 'systemd='; if command -v systemctl >/dev/null 2>&1; then printf 'available\n'; else printf 'unavailable\n'; fi; " +
+        "printf 'cron='; if command -v crontab >/dev/null 2>&1; then printf 'available\n'; else printf 'unavailable\n'; fi; " +
+        "printf 'flock='; if command -v flock >/dev/null 2>&1; then printf 'available\n'; else printf 'unavailable\n'; fi"
+    }
+    'InstallAutoDeploy' {
+        $verificationServicePath = '/run/finance-control-auto-update.service'
+        $verificationTimerPath = '/run/finance-control-auto-update.timer'
+        $installAutomation = "set -eu; " +
+            "trap 'rm -f $autoUpdateUploadPath $autoUpdateServiceUploadPath $autoUpdateTimerUploadPath $verificationServicePath $verificationTimerPath' EXIT; " +
+            "test -s $autoUpdateUploadPath; test -s $autoUpdateServiceUploadPath; test -s $autoUpdateTimerUploadPath; " +
+            "sh -n $autoUpdateUploadPath; " +
+            "install -d -o root -g root -m 755 deploy/zimaos; " +
+            "install -o root -g root -m 700 $autoUpdateUploadPath deploy/zimaos/auto-update.sh; " +
+            "install -o root -g root -m 644 $autoUpdateServiceUploadPath $verificationServicePath; " +
+            "install -o root -g root -m 644 $autoUpdateTimerUploadPath $verificationTimerPath; " +
+            "systemd-analyze verify $verificationServicePath $verificationTimerPath; " +
+            "install -o root -g root -m 644 $verificationServicePath /etc/systemd/system/finance-control-auto-update.service; " +
+            "install -o root -g root -m 644 $verificationTimerPath /etc/systemd/system/finance-control-auto-update.timer; " +
+            "systemctl daemon-reload; " +
+            "systemctl enable --now finance-control-auto-update.timer; " +
+            "systemctl start finance-control-auto-update.service; " +
+            "printf 'auto_deploy_installed=true\n'"
+        $installAutomation
+    }
+    'AutoDeployStatus' {
+        "printf 'timer_enabled='; systemctl is-enabled finance-control-auto-update.timer; " +
+        "printf 'timer_active='; systemctl is-active finance-control-auto-update.timer; " +
+        "printf 'last_result='; systemctl show finance-control-auto-update.service --property=Result --value; " +
+        "printf 'last_exit_status='; systemctl show finance-control-auto-update.service --property=ExecMainStatus --value"
+    }
+    'RunAutoDeploy' {
+        "systemctl start finance-control-auto-update.service; " +
+        "printf 'last_result='; systemctl show finance-control-auto-update.service --property=Result --value; " +
+        "printf 'last_exit_status='; systemctl show finance-control-auto-update.service --property=ExecMainStatus --value"
+    }
+    'AutoDeployLogs' {
+        "journalctl --unit finance-control-auto-update.service --no-pager --lines $Tail"
+    }
 }
 
 $remoteDirectory = '/DATA/AppData/finance-control'
@@ -163,6 +233,12 @@ if ($Action -eq 'SyncDeployment') {
     $quotedComposeUploadPath = ConvertTo-ShellSingleQuoted -Value $composeUploadPath
     $quotedCaddyUploadPath = ConvertTo-ShellSingleQuoted -Value $caddyUploadPath
     $remoteCommand = "test -s $quotedComposeUploadPath && test -s $quotedCaddyUploadPath && chmod 600 $quotedComposeUploadPath $quotedCaddyUploadPath && $remoteCommand"
+}
+if ($Action -eq 'InstallAutoDeploy') {
+    $quotedAutoUpdateUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateUploadPath
+    $quotedAutoUpdateServiceUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateServiceUploadPath
+    $quotedAutoUpdateTimerUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateTimerUploadPath
+    $remoteCommand = "test -s $quotedAutoUpdateUploadPath && test -s $quotedAutoUpdateServiceUploadPath && test -s $quotedAutoUpdateTimerUploadPath && chmod 600 $quotedAutoUpdateUploadPath $quotedAutoUpdateServiceUploadPath $quotedAutoUpdateTimerUploadPath && $remoteCommand"
 }
 $credential = Import-Clixml -LiteralPath $config.CredentialPath
 if ($credential -isnot [System.Management.Automation.PSCredential]) {
@@ -192,11 +268,13 @@ $processInfo.RedirectStandardError = $true
 
 try {
     $process = [System.Diagnostics.Process]::Start($processInfo)
+    $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+    $standardErrorTask = $process.StandardError.ReadToEndAsync()
     $process.StandardInput.WriteLine($plainPassword)
     $process.StandardInput.Close()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
-    $standardError = $process.StandardError.ReadToEnd()
     $process.WaitForExit()
+    $standardOutput = $standardOutputTask.GetAwaiter().GetResult()
+    $standardError = $standardErrorTask.GetAwaiter().GetResult()
 
     if (-not [string]::IsNullOrWhiteSpace($standardOutput)) {
         Write-Output $standardOutput.TrimEnd()
