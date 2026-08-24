@@ -273,6 +273,40 @@ repositórios de backend. Após a primeira publicação, confirme no GitHub que 
 package GHCR está com visibilidade `Public`; assim a VM pode baixar as imagens
 sem armazenar um token do GitHub.
 
+### Deploy automático no ZimaOS
+
+Os workflows de BFF, Finance e Debt publicam duas referências após cada merge
+protegido na `develop`: a tag móvel `develop` e a tag imutável
+`sha-<commit>`. Tags de release `v*` continuam publicando a versão sem o prefixo
+`v`. O ZimaOS usa somente as tags `develop` no ambiente de portfólio; ambientes
+de release podem continuar fixando versão e digest.
+
+O timer `finance-control-auto-update.timer` verifica as três imagens a cada
+cinco minutos. A rotina possui lock contra execuções concorrentes, não reinicia
+containers quando os digests não mudaram, aguarda os health checks do Compose e
+valida o Caddy. Antes da atualização, mantém tags locais das imagens em execução.
+Se algum health check falhar, restaura as três imagens anteriores e coloca a
+combinação defeituosa em quarentena até que um novo digest seja publicado.
+
+Instale ou atualize a automação sem abrir portas e sem armazenar credenciais do
+GitHub no servidor:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallAutoDeploy
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployStatus
+```
+
+Para disparar uma verificação imediata ou consultar os logs do `systemd`:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunAutoDeploy
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployLogs -Tail 100
+```
+
+Não existe webhook, runner self-hosted ou endpoint administrativo público. O
+servidor inicia somente conexões de saída para o GHCR, e apenas imagens geradas
+após merge na branch protegida podem atualizar as tags acompanhadas.
+
 ### Acesso operacional seguro ao ZimaOS
 
 As credenciais administrativas não ficam no repositório. O inicializador cria
@@ -306,6 +340,10 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Deploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action Restart
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InitializePublicTunnel
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action PublicStatus
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallAutoDeploy
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployStatus
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunAutoDeploy
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployLogs -Tail 100
 ```
 
 `SyncEnvironment` transfere o `.env.oci` ignorado pelo Git por SSH, valida o
