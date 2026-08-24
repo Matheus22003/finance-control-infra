@@ -307,6 +307,68 @@ Não existe webhook, runner self-hosted ou endpoint administrativo público. O
 servidor inicia somente conexões de saída para o GHCR, e apenas imagens geradas
 após merge na branch protegida podem atualizar as tags acompanhadas.
 
+### Observabilidade local com Beszel
+
+O arquivo `compose.observability.yml` mantém a observabilidade separada da stack
+da aplicação. A primeira camada usa Beszel `0.18.8` e três componentes com
+imagem fixada por versão e digest:
+
+| Componente | Responsabilidade | Memória máxima | CPU máxima |
+|---|---|---:|---:|
+| Beszel Hub | painel, histórico e alertas | 256 MB | 0,25 |
+| Beszel Agent | métricas do host e dos containers | 128 MB | 0,15 |
+| Docker Socket Proxy | acesso somente leitura à API necessária do Docker | 64 MB | 0,10 |
+
+O Hub publica a porta `8090` apenas na rede local do host. Ele não participa do
+túnel zrok e não deve ser incluído em uma share pública. O Agent usa WebSocket
+para falar com o Hub, com SSH desativado. O socket do Docker nunca é montado no
+Hub ou no Agent: somente o proxy o recebe como somente leitura, expondo sua API
+exclusivamente em `127.0.0.1:23750` do próprio ZimaOS. Para acompanhar o
+`finance-control-auto-update.service`, o Agent monta somente para leitura o
+socket D-Bus do sistema, conforme a integração oficial do Beszel com `systemd`;
+nenhum acesso privilegiado é concedido ao container.
+
+Crie o arquivo local ignorado pelo Git e ajuste `BESZEL_APP_URL` para o endereço
+LAN do ZimaOS:
+
+```powershell
+Copy-Item .env.observability.example .env.observability
+```
+
+Sincronize os artefatos e inicie primeiro somente o Hub:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncObservability
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployHub
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityHealth
+```
+
+Abra `http://ENDERECO_LAN_DO_ZIMAOS:8090`, crie o administrador e abra
+**Adicionar Sistema**. Grave o token e a chave pública exclusivos do sistema
+somente em `BESZEL_AGENT_TOKEN` e `BESZEL_AGENT_KEY` no arquivo local
+`.env.observability`. Esse escopo é preferível ao token universal porque não
+autoriza o registro de outros agentes. Nunca envie esses valores por chat ou
+faça commit deles. Depois sincronize novamente e ative o profile do Agent:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncObservability
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployAgent
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityStatus
+```
+
+Para diagnosticar a camada sem expor credenciais:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityHealth
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityLogs -Tail 200
+```
+
+Os volumes `finance-control-beszel-data` e
+`finance-control-beszel-agent-data` preservam histórico e identidade entre
+reinícios. Não use `down --volumes` numa manutenção comum. Uptime Kuma e avisos
+via Telegram serão acrescentados como camadas posteriores, depois da validação
+das métricas e dos alertas locais do Beszel.
+
 ### Acesso operacional seguro ao ZimaOS
 
 As credenciais administrativas não ficam no repositório. O inicializador cria
@@ -345,6 +407,12 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallAutoDeploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployStatus
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunAutoDeploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployLogs -Tail 100
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncObservability
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployHub
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployAgent
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityStatus
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityHealth
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityLogs -Tail 200
 ```
 
 `SyncEnvironment` transfere o `.env.oci` ignorado pelo Git por SSH, valida o

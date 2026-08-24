@@ -1,0 +1,99 @@
+name: finance-control-observability
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-runtime-security: &runtime-security
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  beszel-hub:
+    image: ghcr.io/henrygd/beszel/beszel:0.18.8@sha256:99181067e5a46b3147231f456114280a8119eed371808bce79e6e7f173946975
+    restart: unless-stopped
+    environment:
+      APP_URL: ${BESZEL_APP_URL:-http://localhost:8090}
+    ports:
+      - "${BESZEL_BIND_ADDRESS:-0.0.0.0}:${BESZEL_PORT:-8090}:8090"
+    volumes:
+      - beszel-data:/beszel_data
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://127.0.0.1:8090"]
+      interval: 60s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    mem_limit: 256m
+    cpus: 0.25
+    logging: *default-logging
+    <<: *runtime-security
+
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:3.4.3-r0-ls90@sha256:5253050dd304d351df2ee61bba43c57dd2b19bb640497a679592051de3a3c639
+    profiles:
+      - agent
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      INFO: "1"
+      PING: "1"
+      POST: "0"
+      VERSION: "1"
+      LOG_LEVEL: warning
+    ports:
+      - "127.0.0.1:23750:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --output-document=- http://127.0.0.1:2375/_ping | grep -q OK"]
+      interval: 60s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    mem_limit: 64m
+    cpus: 0.10
+    logging: *default-logging
+    <<: *runtime-security
+
+  beszel-agent:
+    image: ghcr.io/henrygd/beszel/beszel-agent:0.18.8@sha256:0f0c8939e7ed95707bd8a8da47fd20a7f1a61c2eebbe3b5eb82422486df1f2bf
+    profiles:
+      - agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+    environment:
+      HUB_URL: http://127.0.0.1:${BESZEL_PORT:-8090}
+      TOKEN: ${BESZEL_AGENT_TOKEN:-replace-with-beszel-universal-token}
+      KEY: ${BESZEL_AGENT_KEY:-replace-with-beszel-public-key}
+      DISABLE_SSH: "true"
+      DOCKER_HOST: tcp://127.0.0.1:23750
+      SERVICE_PATTERNS: finance-control-auto-update.service,docker.service
+    volumes:
+      - beszel-agent-data:/var/lib/beszel-agent
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 120s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    mem_limit: 128m
+    cpus: 0.15
+    logging: *default-logging
+    <<: *runtime-security
+
+volumes:
+  beszel-data:
+    name: finance-control-beszel-data
+  beszel-agent-data:
+    name: finance-control-beszel-agent-data
