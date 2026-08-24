@@ -150,7 +150,7 @@ Para ativar um provedor real, copie `.env.example` para `.env` e ajuste apenas a
 AI_PROVIDER=OpenAiCompatible
 AI_BASE_URL=https://api.groq.com/openai/v1/
 AI_API_KEY=sua-chave-groq
-AI_MODEL=llama-3.1-8b-instant
+AI_MODEL=openai/gpt-oss-20b
 ```
 
 Depois, reconstrua somente o BFF:

@@ -139,7 +139,7 @@ services:
       Ai__Provider: ${AI_PROVIDER:-OpenAiCompatible}
       Ai__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1/}
       Ai__ApiKey: ${AI_API_KEY:?AI_API_KEY must be set}
-      Ai__Model: ${AI_MODEL:-llama-3.1-8b-instant}
+      Ai__Model: ${AI_MODEL:-openai/gpt-oss-20b}
       Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
       Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-800}
       Ai__UseJsonResponseFormat: ${AI_USE_JSON_RESPONSE_FORMAT:-false}
