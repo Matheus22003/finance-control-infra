@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncEnvironmentOnly', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs', 'SyncObservability', 'ObservabilityDeployHub', 'ObservabilityDeployAgent', 'ObservabilityDeployKuma', 'ObservabilityConnectHeartbeat', 'ObservabilityInstallShortcut', 'ObservabilityStatus', 'ObservabilityHealth', 'ObservabilityLogs')]
+    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncEnvironmentOnly', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs', 'InstallBackup', 'RunBackup', 'VerifyLatestBackup', 'BackupStatus', 'BackupLogs', 'SyncObservability', 'ObservabilityDeployHub', 'ObservabilityDeployAgent', 'ObservabilityDeployKuma', 'ObservabilityConnectHeartbeat', 'ObservabilityInstallShortcut', 'ObservabilityStatus', 'ObservabilityHealth', 'ObservabilityLogs')]
     [string]$Action = 'Status',
 
     [Parameter()]
@@ -100,6 +100,9 @@ $caddyUploadPath = '/DATA/.ssh/finance-control-caddy.upload'
 $autoUpdateUploadPath = '/DATA/.ssh/finance-control-auto-update.upload'
 $autoUpdateServiceUploadPath = '/DATA/.ssh/finance-control-auto-update-service.upload'
 $autoUpdateTimerUploadPath = '/DATA/.ssh/finance-control-auto-update-timer.upload'
+$backupUploadPath = '/DATA/.ssh/finance-control-backup.upload'
+$backupServiceUploadPath = '/DATA/.ssh/finance-control-backup-service.upload'
+$backupTimerUploadPath = '/DATA/.ssh/finance-control-backup-timer.upload'
 $observabilityEnvironmentUploadPath = '/DATA/.ssh/finance-control-observability-environment.upload'
 $observabilityComposeUploadPath = '/DATA/.ssh/finance-control-observability-compose.upload'
 $observabilityHeartbeatUploadPath = '/DATA/.ssh/finance-control-observability-heartbeat.upload'
@@ -146,6 +149,31 @@ if ($Action -eq 'InstallAutoDeploy') {
     foreach ($file in $autoDeployFiles) {
         if (-not (Test-Path -LiteralPath $file.LocalPath -PathType Leaf)) {
             throw "Arquivo da automação ausente: $($file.LocalPath)"
+        }
+        Send-FileOverScp -LocalPath $file.LocalPath -RemotePath $file.RemotePath -AccessConfig $config
+    }
+}
+
+if ($Action -eq 'InstallBackup') {
+    $backupDirectory = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\deploy\zimaos'))
+    $backupFiles = @(
+        [pscustomobject]@{
+            LocalPath = Join-Path $backupDirectory 'backup.sh'
+            RemotePath = $backupUploadPath
+        },
+        [pscustomobject]@{
+            LocalPath = Join-Path $backupDirectory 'finance-control-backup.service'
+            RemotePath = $backupServiceUploadPath
+        },
+        [pscustomobject]@{
+            LocalPath = Join-Path $backupDirectory 'finance-control-backup.timer'
+            RemotePath = $backupTimerUploadPath
+        }
+    )
+
+    foreach ($file in $backupFiles) {
+        if (-not (Test-Path -LiteralPath $file.LocalPath -PathType Leaf)) {
+            throw "Arquivo de backup ausente: $($file.LocalPath)"
         }
         Send-FileOverScp -LocalPath $file.LocalPath -RemotePath $file.RemotePath -AccessConfig $config
     }
@@ -246,6 +274,41 @@ $operation = switch ($Action) {
     'AutoDeployLogs' {
         "journalctl --unit finance-control-auto-update.service --no-pager --lines $Tail"
     }
+    'InstallBackup' {
+        $verificationServicePath = '/run/finance-control-backup.service'
+        $verificationTimerPath = '/run/finance-control-backup.timer'
+        "set -eu; " +
+            "trap 'rm -f $backupUploadPath $backupServiceUploadPath $backupTimerUploadPath $verificationServicePath $verificationTimerPath' EXIT; " +
+            "test -s $backupUploadPath; test -s $backupServiceUploadPath; test -s $backupTimerUploadPath; " +
+            "sh -n $backupUploadPath; " +
+            "install -d -o root -g root -m 755 deploy/zimaos backups; " +
+            "install -o root -g root -m 700 $backupUploadPath deploy/zimaos/backup.sh; " +
+            "install -o root -g root -m 644 $backupServiceUploadPath $verificationServicePath; " +
+            "install -o root -g root -m 644 $backupTimerUploadPath $verificationTimerPath; " +
+            "systemd-analyze verify $verificationServicePath $verificationTimerPath; " +
+            "install -o root -g root -m 644 $verificationServicePath /etc/systemd/system/finance-control-backup.service; " +
+            "install -o root -g root -m 644 $verificationTimerPath /etc/systemd/system/finance-control-backup.timer; " +
+            "systemctl daemon-reload; " +
+            "systemctl enable --now finance-control-backup.timer; " +
+            "printf 'backup_automation_installed=true\n'"
+    }
+    'RunBackup' {
+        "set -eu; systemctl start finance-control-backup.service; " +
+            "printf 'last_result='; systemctl show finance-control-backup.service --property=Result --value; " +
+            "printf 'last_exit_status='; systemctl show finance-control-backup.service --property=ExecMainStatus --value"
+    }
+    'VerifyLatestBackup' {
+        "./deploy/zimaos/backup.sh verify"
+    }
+    'BackupStatus' {
+        "printf 'timer_enabled='; systemctl is-enabled finance-control-backup.timer; " +
+            "printf 'timer_active='; systemctl is-active finance-control-backup.timer; " +
+            "printf 'last_result='; systemctl show finance-control-backup.service --property=Result --value; " +
+            "./deploy/zimaos/backup.sh status"
+    }
+    'BackupLogs' {
+        "journalctl --unit finance-control-backup.service --no-pager --lines $Tail"
+    }
     'SyncObservability' {
         "set -eu; " +
         "trap 'rm -f $observabilityEnvironmentUploadPath $observabilityComposeUploadPath $observabilityHeartbeatUploadPath $observabilityShortcutUploadPath' EXIT; " +
@@ -304,6 +367,12 @@ if ($Action -eq 'InstallAutoDeploy') {
     $quotedAutoUpdateServiceUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateServiceUploadPath
     $quotedAutoUpdateTimerUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateTimerUploadPath
     $remoteCommand = "test -s $quotedAutoUpdateUploadPath && test -s $quotedAutoUpdateServiceUploadPath && test -s $quotedAutoUpdateTimerUploadPath && chmod 600 $quotedAutoUpdateUploadPath $quotedAutoUpdateServiceUploadPath $quotedAutoUpdateTimerUploadPath && $remoteCommand"
+}
+if ($Action -eq 'InstallBackup') {
+    $quotedBackupUploadPath = ConvertTo-ShellSingleQuoted -Value $backupUploadPath
+    $quotedBackupServiceUploadPath = ConvertTo-ShellSingleQuoted -Value $backupServiceUploadPath
+    $quotedBackupTimerUploadPath = ConvertTo-ShellSingleQuoted -Value $backupTimerUploadPath
+    $remoteCommand = "test -s $quotedBackupUploadPath && test -s $quotedBackupServiceUploadPath && test -s $quotedBackupTimerUploadPath && chmod 600 $quotedBackupUploadPath $quotedBackupServiceUploadPath $quotedBackupTimerUploadPath && $remoteCommand"
 }
 if ($Action -eq 'SyncObservability') {
     $quotedObservabilityEnvironmentUploadPath = ConvertTo-ShellSingleQuoted -Value $observabilityEnvironmentUploadPath

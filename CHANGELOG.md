@@ -4,6 +4,10 @@
 
 ### Added
 
+- Beszel e Uptime Kuma locais, isolados do túnel público e com imagens fixadas;
+- backup semanal dos três PostgreSQL e quatro volumes operacionais do ZimaOS;
+- ensaio automático de restauração em PostgreSQL e volumes descartáveis;
+- helpers restritos para operação, saúde, backup, restauração e observabilidade;
 - Compose de staging para OCI ARM64 sem bancos locais;
 - Caddy com TLS, WebSocket e validação do origin secret do Cloudflare Worker;
 - contrato de variáveis para três PostgreSQL Neon, Brevo e Groq;

@@ -1,0 +1,18 @@
+[Unit]
+Description=Finance Control backup and restore verification
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/DATA/AppData/finance-control
+ExecStart=/DATA/AppData/finance-control/deploy/zimaos/backup.sh create
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target
