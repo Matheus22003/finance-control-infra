@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Finance Control backup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00
+RandomizedDelaySec=20min
+Persistent=true
+Unit=finance-control-backup.service
+
+[Install]
+WantedBy=timers.target

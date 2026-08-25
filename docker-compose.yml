@@ -57,7 +57,6 @@ services:
       AuthSession__RefreshTokenDays: ${BFF_REFRESH_TOKEN_DAYS:-30}
       AuthSession__CookieName: finance_control_refresh
       RateLimiting__AuthSensitivePermitLimit: ${BFF_AUTH_SENSITIVE_PERMIT_LIMIT:-10}
-      DataProtection__KeysPath: /var/lib/finance-control/keys
       Email__Host: mailpit
       Email__Port: 1025
       Email__FromAddress: ${BFF_EMAIL_FROM_ADDRESS:-no-reply@financecontrol.local}
@@ -77,7 +76,7 @@ services:
       Ai__Provider: ${AI_PROVIDER:-Mock}
       Ai__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1/}
       Ai__ApiKey: ${AI_API_KEY:-}
-      Ai__Model: ${AI_MODEL:-llama-3.1-8b-instant}
+      Ai__Model: ${AI_MODEL:-openai/gpt-oss-20b}
       Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
       Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-800}
       Ai__UseJsonResponseFormat: ${AI_USE_JSON_RESPONSE_FORMAT:-false}
@@ -86,8 +85,6 @@ services:
       ConnectionStrings__BffDatabase: Host=bff-db;Port=5432;Database=${BFF_DB_NAME:-finance_control_bff};Username=${BFF_DB_USER:-bff_app};Password=${BFF_DB_PASSWORD:?BFF_DB_PASSWORD must be set}
     ports:
       - "${BFF_PORT:-8080}:8080"
-    volumes:
-      - bff-data-protection-keys:/var/lib/finance-control/keys
     depends_on:
       bff-db:
         condition: service_healthy
@@ -221,7 +218,6 @@ networks:
 
 volumes:
   bff-db-data:
-  bff-data-protection-keys:
   finance-db-data:
   debt-db-data:
   mailpit-data:

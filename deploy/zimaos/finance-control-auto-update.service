@@ -1,0 +1,30 @@
+[Unit]
+Description=Finance Control automatic container update
+Documentation=https://github.com/Matheus22003/finance-control-infra
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/DATA/AppData/finance-control/.env.zimaos
+ConditionPathExists=/DATA/AppData/finance-control/compose.zimaos.yml
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/DATA/AppData/finance-control
+ExecStart=/DATA/AppData/finance-control/deploy/zimaos/auto-update.sh
+TimeoutStartSec=15min
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/DATA/AppData/finance-control
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

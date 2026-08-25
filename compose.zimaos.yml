@@ -1,0 +1,223 @@
+name: finance-control-zimaos
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-runtime-security: &runtime-security
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  edge:
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    restart: unless-stopped
+    volumes:
+      - ./deploy/zimaos/Caddyfile:/etc/caddy/Caddyfile:ro
+    expose:
+      - "8080"
+    depends_on:
+      bff:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    networks:
+      - edge-network
+    mem_limit: 128m
+    cpus: 0.10
+    logging: *default-logging
+    <<: *runtime-security
+
+  zrok-init:
+    image: docker.io/library/busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0
+    profiles:
+      - public
+    command: ["sh", "-c", "chown -R 2171:2171 /mnt"]
+    user: root
+    volumes:
+      - zrok-environment:/mnt
+    mem_limit: 32m
+    cpus: 0.05
+    logging: *default-logging
+    <<: *runtime-security
+
+  zrok-enable:
+    image: docker.io/openziti/zrok2:2.0.4@sha256:310ab634172ce03dd23ff1ee8515195e1a564197dbc4e6cdfd57dad2fb822400
+    profiles:
+      - public
+    entrypoint: zrok2-enable
+    environment:
+      HOME: /mnt
+      ZROK2_ENABLE_TOKEN: ${ZROK2_ENABLE_TOKEN:?ZROK2_ENABLE_TOKEN must be set}
+      ZROK2_API_ENDPOINT: https://api-v2.zrok.io
+    depends_on:
+      zrok-init:
+        condition: service_completed_successfully
+    volumes:
+      - zrok-environment:/mnt
+    mem_limit: 192m
+    cpus: 0.20
+    logging: *default-logging
+    <<: *runtime-security
+
+  zrok-agent:
+    image: docker.io/openziti/zrok2:2.0.4@sha256:310ab634172ce03dd23ff1ee8515195e1a564197dbc4e6cdfd57dad2fb822400
+    profiles:
+      - public
+    restart: unless-stopped
+    environment:
+      HOME: /mnt
+      ZROK2_SHARE_NAME: ${ZROK2_SHARE_NAME:-finance-control}
+    entrypoint:
+      - bash
+      - -c
+      - rm -f /mnt/.zrok2/agent.socket && exec "$@"
+    command:
+      - --
+      - zrok2
+      - agent
+      - start
+      - --console-address
+      - 127.0.0.1
+      - --console-start-port
+      - "8888"
+      - --console-end-port
+      - "8888"
+    depends_on:
+      edge:
+        condition: service_healthy
+      zrok-enable:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "zrok2", "agent", "status"]
+      interval: 15s
+      timeout: 10s
+      start_period: 20s
+      retries: 10
+    volumes:
+      - zrok-environment:/mnt
+    networks:
+      - edge-network
+    mem_limit: 256m
+    cpus: 0.25
+    logging: *default-logging
+    <<: *runtime-security
+
+  bff:
+    image: ${BFF_IMAGE:?BFF_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Jwt__Issuer: ${BFF_JWT_ISSUER:-finance-control-bff}
+      Jwt__Audience: ${BFF_JWT_AUDIENCE:-finance-control-frontend}
+      Jwt__Key: ${BFF_JWT_KEY:?BFF_JWT_KEY must be set}
+      Jwt__ExpiresMinutes: ${BFF_JWT_EXPIRES_MINUTES:-15}
+      AuthSession__RefreshTokenDays: ${BFF_REFRESH_TOKEN_DAYS:-30}
+      AuthSession__CookieName: finance_control_refresh
+      RateLimiting__AuthSensitivePermitLimit: ${BFF_AUTH_SENSITIVE_PERMIT_LIMIT:-10}
+      Email__Provider: Brevo
+      Email__FromAddress: ${BFF_EMAIL_FROM_ADDRESS:?BFF_EMAIL_FROM_ADDRESS must be set}
+      Email__FromName: ${BFF_EMAIL_FROM_NAME:-Finance Control}
+      Email__ApiBaseUrl: https://api.brevo.com/v3/
+      Email__ApiKey: ${BREVO_API_KEY:?BREVO_API_KEY must be set}
+      Email__TimeoutSeconds: ${BREVO_TIMEOUT_SECONDS:-30}
+      Email__FrontendBaseUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      DemoUser__Email: ${BFF_DEMO_EMAIL:?BFF_DEMO_EMAIL must be set}
+      DemoUser__Password: ${BFF_DEMO_PASSWORD:?BFF_DEMO_PASSWORD must be set}
+      DemoUser__FriendEmail: ${BFF_FRIEND_EMAIL:-}
+      DemoUser__FriendPassword: ${BFF_FRIEND_PASSWORD:-}
+      FinanceService__BaseUrl: http://finance-service:8081
+      FinanceService__TimeoutSeconds: ${FINANCE_SERVICE_TIMEOUT_SECONDS:-10}
+      DebtService__BaseUrl: http://debt-service:8082
+      DebtService__TimeoutSeconds: ${DEBT_SERVICE_TIMEOUT_SECONDS:-10}
+      Ai__Provider: ${AI_PROVIDER:-OpenAiCompatible}
+      Ai__BaseUrl: ${AI_BASE_URL:-https://api.groq.com/openai/v1/}
+      Ai__ApiKey: ${AI_API_KEY:?AI_API_KEY must be set}
+      Ai__Model: ${AI_MODEL:-openai/gpt-oss-20b}
+      Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-30}
+      Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-800}
+      Ai__UseJsonResponseFormat: ${AI_USE_JSON_RESPONSE_FORMAT:-false}
+      Ai__ApplicationUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      Ai__ApplicationName: ${AI_APPLICATION_NAME:-Finance Control}
+      ConnectionStrings__BffDatabase: ${BFF_DATABASE_CONNECTION_STRING:?BFF_DATABASE_CONNECTION_STRING must be set}
+    expose:
+      - "8080"
+    depends_on:
+      finance-service:
+        condition: service_healthy
+      debt-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    networks:
+      - edge-network
+      - services-network
+    mem_limit: 768m
+    cpus: 0.50
+    logging: *default-logging
+    <<: *runtime-security
+
+  finance-service:
+    image: ${FINANCE_IMAGE:?FINANCE_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      JAVA_TOOL_OPTIONS: -XX:InitialRAMPercentage=20.0 -XX:MaxRAMPercentage=70.0
+      SPRING_DATASOURCE_URL: ${FINANCE_DATABASE_JDBC_URL:?FINANCE_DATABASE_JDBC_URL must be set}
+      SPRING_DATASOURCE_USERNAME: ${FINANCE_DATABASE_USERNAME:?FINANCE_DATABASE_USERNAME must be set}
+      SPRING_DATASOURCE_PASSWORD: ${FINANCE_DATABASE_PASSWORD:?FINANCE_DATABASE_PASSWORD must be set}
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+    networks:
+      - services-network
+    mem_limit: 1536m
+    cpus: 0.75
+    logging: *default-logging
+    <<: *runtime-security
+
+  debt-service:
+    image: ${DEBT_IMAGE:?DEBT_IMAGE must be set}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DebtDatabase: ${DEBT_DATABASE_CONNECTION_STRING:?DEBT_DATABASE_CONNECTION_STRING must be set}
+    expose:
+      - "8082"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8082 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    networks:
+      - services-network
+    mem_limit: 768m
+    cpus: 0.50
+    logging: *default-logging
+    <<: *runtime-security
+
+networks:
+  edge-network:
+    driver: bridge
+  services-network:
+    driver: bridge
+
+volumes:
+  zrok-environment:
+    name: finance-control-zrok-environment

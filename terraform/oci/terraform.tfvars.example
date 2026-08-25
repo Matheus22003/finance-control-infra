@@ -1,0 +1,6 @@
+region              = "sa-saopaulo-1"
+compartment_ocid    = "ocid1.compartment.oc1..replace-me"
+availability_domain = "replace-with-an-availability-domain"
+image_ocid          = "ocid1.image.oc1.sa-saopaulo-1.replace-me"
+ssh_public_key      = "ssh-ed25519 replace-me finance-control-staging"
+ssh_allowed_cidr    = "203.0.113.10/32"
