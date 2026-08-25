@@ -410,6 +410,23 @@ preservam histórico, identidade e configuração entre reinícios. Não use
 `down --volumes` numa manutenção comum. Avisos externos, como Telegram, são uma
 melhoria pós-MVP e não são necessários para a operação atual.
 
+### Smoke test do ambiente público
+
+O teste usa somente o `.env.oci` local ignorado pelo Git. Ele valida a SPA, o
+health público do BFF, login, dashboard, Finance, Debt, notificações, IA,
+rotação do refresh token e logout. Nenhuma credencial ou resposta financeira é
+impressa:
+
+```powershell
+pwsh -File .\tools\Test-PublicStaging.ps1
+```
+
+Para testar o restante sem consumir uma chamada do provider de IA:
+
+```powershell
+pwsh -File .\tools\Test-PublicStaging.ps1 -SkipAi
+```
+
 ### Backup e ensaio de restauração
 
 O backup semanal exporta separadamente os três bancos PostgreSQL do Neon e
