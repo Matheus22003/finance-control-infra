@@ -101,6 +101,8 @@ jobs:
       - name: Validar configuração do Compose
         working-directory: workspace/finance-control-infra
         run: |
+          sh -n deploy/zimaos/connect-beszel-heartbeat.sh
+          sh -n deploy/zimaos/add-uptime-kuma-shortcut.sh
           docker compose --env-file .env.example config --quiet
           docker compose --env-file .env.observability.example -f compose.observability.yml config --quiet
           docker compose --env-file .env.observability.example -f compose.observability.yml --profile agent config --quiet
