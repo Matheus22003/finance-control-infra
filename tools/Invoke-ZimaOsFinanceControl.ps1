@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncEnvironmentOnly', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs')]
+    [ValidateSet('Status', 'Health', 'Logs', 'Deploy', 'Restart', 'SyncEnvironment', 'SyncEnvironmentOnly', 'SyncDeployment', 'InitializePublicTunnel', 'PublicStatus', 'AutomationInfo', 'InstallAutoDeploy', 'AutoDeployStatus', 'RunAutoDeploy', 'AutoDeployLogs', 'SyncObservability', 'ObservabilityDeployHub', 'ObservabilityDeployAgent', 'ObservabilityDeployKuma', 'ObservabilityConnectHeartbeat', 'ObservabilityInstallShortcut', 'ObservabilityStatus', 'ObservabilityHealth', 'ObservabilityLogs')]
     [string]$Action = 'Status',
 
     [Parameter()]
@@ -100,6 +100,10 @@ $caddyUploadPath = '/DATA/.ssh/finance-control-caddy.upload'
 $autoUpdateUploadPath = '/DATA/.ssh/finance-control-auto-update.upload'
 $autoUpdateServiceUploadPath = '/DATA/.ssh/finance-control-auto-update-service.upload'
 $autoUpdateTimerUploadPath = '/DATA/.ssh/finance-control-auto-update-timer.upload'
+$observabilityEnvironmentUploadPath = '/DATA/.ssh/finance-control-observability-environment.upload'
+$observabilityComposeUploadPath = '/DATA/.ssh/finance-control-observability-compose.upload'
+$observabilityHeartbeatUploadPath = '/DATA/.ssh/finance-control-observability-heartbeat.upload'
+$observabilityShortcutUploadPath = '/DATA/.ssh/finance-control-observability-shortcut.upload'
 if ($Action -in @('SyncEnvironment', 'SyncEnvironmentOnly')) {
     $localEnvironmentPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\.env.oci'))
     if (-not (Test-Path -LiteralPath $localEnvironmentPath -PathType Leaf)) {
@@ -147,8 +151,27 @@ if ($Action -eq 'InstallAutoDeploy') {
     }
 }
 
+if ($Action -eq 'SyncObservability') {
+    $localObservabilityEnvironmentPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\.env.observability'))
+    $localObservabilityComposePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\compose.observability.yml'))
+    $localObservabilityHeartbeatPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\deploy\zimaos\connect-beszel-heartbeat.sh'))
+    $localObservabilityShortcutPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\deploy\zimaos\add-uptime-kuma-shortcut.sh'))
+    foreach ($localPath in @($localObservabilityEnvironmentPath, $localObservabilityComposePath, $localObservabilityHeartbeatPath, $localObservabilityShortcutPath)) {
+        if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
+            throw "Arquivo de observabilidade local não encontrado: $localPath"
+        }
+    }
+
+    Send-FileOverScp -LocalPath $localObservabilityEnvironmentPath -RemotePath $observabilityEnvironmentUploadPath -AccessConfig $config
+    Send-FileOverScp -LocalPath $localObservabilityComposePath -RemotePath $observabilityComposeUploadPath -AccessConfig $config
+    Send-FileOverScp -LocalPath $localObservabilityHeartbeatPath -RemotePath $observabilityHeartbeatUploadPath -AccessConfig $config
+    Send-FileOverScp -LocalPath $localObservabilityShortcutPath -RemotePath $observabilityShortcutUploadPath -AccessConfig $config
+}
+
 $compose = 'docker compose --env-file .env.zimaos -f compose.zimaos.yml'
 $publicCompose = "$compose --profile public"
+$observabilityCompose = 'docker compose --env-file .env.observability --env-file .env.observability.runtime -f compose.observability.yml'
+$observabilityAgentCompose = "$observabilityCompose --profile agent"
 $operation = switch ($Action) {
     'Status' {
         "$compose ps"
@@ -223,6 +246,45 @@ $operation = switch ($Action) {
     'AutoDeployLogs' {
         "journalctl --unit finance-control-auto-update.service --no-pager --lines $Tail"
     }
+    'SyncObservability' {
+        "set -eu; " +
+        "trap 'rm -f $observabilityEnvironmentUploadPath $observabilityComposeUploadPath $observabilityHeartbeatUploadPath $observabilityShortcutUploadPath' EXIT; " +
+        "test -f .env.observability.runtime || install -o root -g root -m 600 /dev/null .env.observability.runtime; " +
+        "sh -n $observabilityHeartbeatUploadPath; " +
+        "sh -n $observabilityShortcutUploadPath; " +
+        "docker compose --env-file $observabilityEnvironmentUploadPath --env-file .env.observability.runtime -f $observabilityComposeUploadPath config --quiet; " +
+        "docker compose --env-file $observabilityEnvironmentUploadPath --env-file .env.observability.runtime -f $observabilityComposeUploadPath --profile agent config --quiet; " +
+        "install -o root -g root -m 600 $observabilityEnvironmentUploadPath .env.observability; " +
+        "install -o root -g root -m 644 $observabilityComposeUploadPath compose.observability.yml; " +
+        "install -o root -g root -m 700 $observabilityHeartbeatUploadPath connect-beszel-heartbeat.sh; " +
+        "install -o root -g root -m 700 $observabilityShortcutUploadPath add-uptime-kuma-shortcut.sh; " +
+        "printf 'observability_synced=true\n'"
+    }
+    'ObservabilityDeployHub' {
+        "$observabilityCompose pull beszel-hub && $observabilityCompose up --detach --wait beszel-hub"
+    }
+    'ObservabilityDeployAgent' {
+        $validateAgentSecrets = 'set -eu; token="$(sed -n "s/^BESZEL_AGENT_TOKEN=//p" .env.observability)"; key="$(sed -n "s/^BESZEL_AGENT_KEY=//p" .env.observability)"; case "$token" in ""|replace-*) echo "Configure BESZEL_AGENT_TOKEN antes de iniciar o agente." >&2; exit 1;; esac; case "$key" in ""|replace-*) echo "Configure BESZEL_AGENT_KEY antes de iniciar o agente." >&2; exit 1;; esac'
+        "$validateAgentSecrets; $observabilityAgentCompose pull beszel-hub socket-proxy beszel-agent && $observabilityAgentCompose up --detach --wait beszel-hub socket-proxy beszel-agent"
+    }
+    'ObservabilityDeployKuma' {
+        "$observabilityCompose pull uptime-kuma && $observabilityCompose up --detach --wait uptime-kuma"
+    }
+    'ObservabilityConnectHeartbeat' {
+        "./connect-beszel-heartbeat.sh"
+    }
+    'ObservabilityInstallShortcut' {
+        "./add-uptime-kuma-shortcut.sh $(ConvertTo-ShellSingleQuoted -Value ([string]$config.ServerAddress))"
+    }
+    'ObservabilityStatus' {
+        "$observabilityAgentCompose ps --all"
+    }
+    'ObservabilityHealth' {
+        "$observabilityCompose exec -T beszel-hub /beszel health --url http://127.0.0.1:8090; printf 'beszel_hub_health=ok\n'; $observabilityCompose exec -T uptime-kuma extra/healthcheck; printf 'uptime_kuma_health=ok\n'"
+    }
+    'ObservabilityLogs' {
+        "$observabilityAgentCompose logs --no-color --tail $Tail"
+    }
 }
 
 $remoteDirectory = '/DATA/AppData/finance-control'
@@ -242,6 +304,13 @@ if ($Action -eq 'InstallAutoDeploy') {
     $quotedAutoUpdateServiceUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateServiceUploadPath
     $quotedAutoUpdateTimerUploadPath = ConvertTo-ShellSingleQuoted -Value $autoUpdateTimerUploadPath
     $remoteCommand = "test -s $quotedAutoUpdateUploadPath && test -s $quotedAutoUpdateServiceUploadPath && test -s $quotedAutoUpdateTimerUploadPath && chmod 600 $quotedAutoUpdateUploadPath $quotedAutoUpdateServiceUploadPath $quotedAutoUpdateTimerUploadPath && $remoteCommand"
+}
+if ($Action -eq 'SyncObservability') {
+    $quotedObservabilityEnvironmentUploadPath = ConvertTo-ShellSingleQuoted -Value $observabilityEnvironmentUploadPath
+    $quotedObservabilityComposeUploadPath = ConvertTo-ShellSingleQuoted -Value $observabilityComposeUploadPath
+    $quotedObservabilityHeartbeatUploadPath = ConvertTo-ShellSingleQuoted -Value $observabilityHeartbeatUploadPath
+    $quotedObservabilityShortcutUploadPath = ConvertTo-ShellSingleQuoted -Value $observabilityShortcutUploadPath
+    $remoteCommand = "test -s $quotedObservabilityEnvironmentUploadPath && test -s $quotedObservabilityComposeUploadPath && test -s $quotedObservabilityHeartbeatUploadPath && test -s $quotedObservabilityShortcutUploadPath && chmod 600 $quotedObservabilityEnvironmentUploadPath $quotedObservabilityComposeUploadPath $quotedObservabilityHeartbeatUploadPath $quotedObservabilityShortcutUploadPath && $remoteCommand"
 }
 $credential = Import-Clixml -LiteralPath $config.CredentialPath
 if ($credential -isnot [System.Management.Automation.PSCredential]) {

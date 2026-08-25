@@ -2,6 +2,7 @@
 !.env.example
 !.env.oci.example
 !.env.zimaos.example
+!.env.observability.example
 *.local
 terraform.tfvars
 *.tfstate
