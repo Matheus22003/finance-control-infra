@@ -407,8 +407,60 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityLogs -Ta
 Os volumes `finance-control-beszel-data`,
 `finance-control-beszel-agent-data` e `finance-control-uptime-kuma-data`
 preservam histórico, identidade e configuração entre reinícios. Não use
-`down --volumes` numa manutenção comum. Avisos via Telegram serão a próxima
-camada, depois da validação dos monitores do Uptime Kuma.
+`down --volumes` numa manutenção comum. Avisos externos, como Telegram, são uma
+melhoria pós-MVP e não são necessários para a operação atual.
+
+### Smoke test do ambiente público
+
+O teste usa somente o `.env.oci` local ignorado pelo Git. Ele valida a SPA, o
+health público do BFF, login, dashboard, Finance, Debt, notificações, IA,
+rotação do refresh token e logout. Nenhuma credencial ou resposta financeira é
+impressa:
+
+```powershell
+pwsh -File .\tools\Test-PublicStaging.ps1
+```
+
+Para testar o restante sem consumir uma chamada do provider de IA:
+
+```powershell
+pwsh -File .\tools\Test-PublicStaging.ps1 -SkipAi
+```
+
+### Backup e ensaio de restauração
+
+O backup semanal exporta separadamente os três bancos PostgreSQL do Neon e
+arquiva os volumes do zrok, Beszel Hub, Beszel Agent e Uptime Kuma. Os arquivos
+ficam em `/DATA/AppData/finance-control/backups`, acessíveis somente por `root`,
+com retenção das sete execuções completas mais recentes.
+
+Cada execução valida os checksums, restaura os três dumps em um PostgreSQL 17
+temporário e extrai os quatro arquivos em volumes Docker descartáveis. Nenhum
+ensaio escreve nos bancos ou volumes reais. O Beszel e o Uptime Kuma são
+pausados somente durante a cópia consistente dos volumes e voltam com health
+check obrigatório; a aplicação e o túnel público continuam ativos.
+
+Instale o timer semanal e execute o primeiro ensaio manual:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action BackupStatus
+```
+
+Para repetir apenas a restauração descartável do último conjunto ou consultar
+os logs:
+
+```powershell
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action VerifyLatestBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action BackupLogs -Tail 200
+```
+
+O timer executa aos domingos às `03:30`, com atraso aleatório de até vinte
+minutos e recuperação automática de uma execução perdida enquanto o host
+estava desligado. Os backups locais protegem contra exclusão acidental, mas não
+contra perda física do disco; uma cópia criptografada fora do ZimaOS permanece
+como melhoria pós-MVP.
 
 ### Acesso operacional seguro ao ZimaOS
 
@@ -448,6 +500,11 @@ pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallAutoDeploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployStatus
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunAutoDeploy
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action AutoDeployLogs -Tail 100
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action InstallBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action RunBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action VerifyLatestBackup
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action BackupStatus
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action BackupLogs -Tail 100
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncObservability
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployHub
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action ObservabilityDeployAgent
