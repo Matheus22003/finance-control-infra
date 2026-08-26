@@ -43,6 +43,10 @@ services:
       Email__ApiKey: ${BREVO_API_KEY:?BREVO_API_KEY must be set}
       Email__TimeoutSeconds: ${BREVO_TIMEOUT_SECONDS:-30}
       Email__FrontendBaseUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      WebPush__Enabled: ${WEB_PUSH_ENABLED:-false}
+      WebPush__Subject: ${WEB_PUSH_SUBJECT:-}
+      WebPush__PublicKey: ${WEB_PUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${WEB_PUSH_PRIVATE_KEY:-}
       DemoUser__Email: ${BFF_DEMO_EMAIL:?BFF_DEMO_EMAIL must be set}
       DemoUser__Password: ${BFF_DEMO_PASSWORD:?BFF_DEMO_PASSWORD must be set}
       DemoUser__FriendEmail: ${BFF_FRIEND_EMAIL:-}
@@ -69,7 +73,13 @@ services:
       debt-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3",
+        ]
       interval: 15s
       timeout: 5s
       start_period: 30s
@@ -91,7 +101,14 @@ services:
     expose:
       - "8081"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8081/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--output-document=/dev/null",
+          "http://127.0.0.1:8081/health",
+        ]
       interval: 15s
       timeout: 5s
       start_period: 45s
@@ -110,7 +127,13 @@ services:
     expose:
       - "8082"
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8082 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/8082 && printf 'GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200 OK' <&3",
+        ]
       interval: 15s
       timeout: 5s
       start_period: 30s

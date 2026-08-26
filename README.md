@@ -161,6 +161,38 @@ docker compose up --detach --build --wait bff
 
 Como alternativa de testes, use `https://openrouter.ai/api/v1/` e o modelo `openrouter/free`. A integração permanece restrita ao BFF; frontend e microserviços nunca acessam o provedor diretamente. Não versione o arquivo `.env` nem uma chave real.
 
+## Notificações Web Push
+
+Web Push não exige provedor pago. Abra
+`tools/web-push-key-generator.html`, informe um contato `mailto:` ou uma URL
+HTTPS e gere um par VAPID localmente. Copie o resultado apenas para o arquivo
+`.env`, `.env.zimaos` ou `.env.oci` ignorado pelo Git:
+
+```text
+WEB_PUSH_ENABLED=true
+WEB_PUSH_SUBJECT=mailto:owner@example.org
+WEB_PUSH_PUBLIC_KEY=sua-chave-publica-vapid
+WEB_PUSH_PRIVATE_KEY=sua-chave-privada-vapid
+```
+
+No ambiente administrado pelo helper do ZimaOS, a geração e atualização podem
+ser feitas sem exibir as chaves no terminal. Por padrão, o script usa
+`FRONTEND_PUBLIC_URL` como identificação VAPID:
+
+```powershell
+pwsh -File .\tools\Enable-WebPushEnvironment.ps1
+pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironmentOnly
+```
+
+O script preserva um par existente. A opção `-Rotate` deve ser usada somente
+quando for necessário invalidar todas as inscrições atuais.
+
+Os três arquivos Compose encaminham essas variáveis somente ao BFF. A chave
+pública é entregue ao navegador autenticado; a privada permanece no container.
+Mantenha o mesmo par ao atualizar o ambiente, pois trocá-lo exige que todos os
+navegadores se inscrevam novamente. Para desativar a entrega externa sem apagar
+preferências ou dispositivos, use `WEB_PUSH_ENABLED=false`.
+
 ## Staging gratuito na OCI
 
 Os artefatos de staging são separados do Compose local:

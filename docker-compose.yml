@@ -13,7 +13,14 @@ services:
       bff:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1:8080/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--output-document=/dev/null",
+          "http://127.0.0.1:8080/health",
+        ]
       interval: 10s
       timeout: 3s
       start_period: 5s
@@ -65,6 +72,10 @@ services:
       Email__Password: ""
       Email__Security: None
       Email__FrontendBaseUrl: http://localhost:${FRONTEND_PORT:-4200}
+      WebPush__Enabled: ${WEB_PUSH_ENABLED:-false}
+      WebPush__Subject: ${WEB_PUSH_SUBJECT:-}
+      WebPush__PublicKey: ${WEB_PUSH_PUBLIC_KEY:-}
+      WebPush__PrivateKey: ${WEB_PUSH_PRIVATE_KEY:-}
       DemoUser__Email: ${BFF_DEMO_EMAIL:-demo@financecontrol.local}
       DemoUser__Password: ${BFF_DEMO_PASSWORD:?BFF_DEMO_PASSWORD must be set}
       DemoUser__FriendEmail: ${BFF_FRIEND_EMAIL:-friend@financecontrol.local}
@@ -95,7 +106,13 @@ services:
       mailpit:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3']
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3',
+        ]
       interval: 10s
       timeout: 3s
       start_period: 10s
@@ -140,7 +157,13 @@ services:
       debt-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/8082 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3']
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          'exec 3<>/dev/tcp/127.0.0.1/8082 && printf "GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3 && grep -q "200 OK" <&3',
+        ]
       interval: 10s
       timeout: 3s
       start_period: 10s
