@@ -25,7 +25,21 @@ compose() {
 
 read_environment_value() {
     key="$1"
-    sed -n "s/^${key}=//p" "$environment_file" | tail -n 1
+    value="$(sed -n "s/^${key}=//p" "$environment_file" | tail -n 1 | tr -d '\r')"
+    value="$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+    case "$value" in
+        \"*\")
+            value="${value#\"}"
+            value="${value%\"}"
+            ;;
+        \'*\')
+            value="${value#\'}"
+            value="${value%\'}"
+            ;;
+    esac
+
+    printf '%s\n' "$value"
 }
 
 container_image_id() {
