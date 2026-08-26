@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finance Control — Gerador Web Push</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        background: #07111f;
+        color: #eef7ff;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      main {
+        width: min(760px, 100%);
+        background: #0e1d30;
+        border: 1px solid #26415d;
+        border-radius: 20px;
+        padding: 28px;
+        box-sizing: border-box;
+        box-shadow: 0 24px 80px #0007;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.6rem, 5vw, 2.4rem);
+      }
+      p {
+        color: #aac0d8;
+        line-height: 1.55;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        margin: 24px 0 16px;
+        font-weight: 700;
+      }
+      input,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #36536f;
+        border-radius: 10px;
+        background: #081526;
+        color: #eff9ff;
+        padding: 12px;
+        font: inherit;
+      }
+      textarea {
+        min-height: 190px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.88rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 16px 0;
+      }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 18px;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+        background: #2dd4bf;
+        color: #03251f;
+      }
+      button.secondary {
+        background: #203a54;
+        color: #e8f5ff;
+      }
+      .warning {
+        color: #ffd18a;
+        background: #3a2914;
+        border: 1px solid #745024;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      #status {
+        min-height: 24px;
+        color: #72e5d5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Chaves Web Push</h1>
+      <p>
+        Gera localmente um par VAPID P-256 para o BFF. Nada é enviado para a
+        internet.
+      </p>
+
+      <label>
+        Identificação do responsável
+        <input
+          id="subject"
+          value="mailto:owner@example.org"
+          autocomplete="off"
+        />
+      </label>
+
+      <div class="actions">
+        <button id="generate" type="button">Gerar novo par</button>
+        <button id="copy" class="secondary" type="button" disabled>
+          Copiar configuração
+        </button>
+      </div>
+
+      <textarea
+        id="output"
+        readonly
+        placeholder="A configuração aparecerá aqui."
+      ></textarea>
+      <p id="status" role="status"></p>
+      <p class="warning">
+        <strong>Atenção:</strong> a chave privada deve existir somente no
+        arquivo <code>.env</code> ignorado pelo Git. Gerar outro par invalida as
+        inscrições já registradas nos navegadores.
+      </p>
+    </main>
+
+    <script>
+      const subject = document.querySelector("#subject");
+      const output = document.querySelector("#output");
+      const status = document.querySelector("#status");
+      const copy = document.querySelector("#copy");
+
+      function decodeBase64Url(value) {
+        const padded = value
+          .replace(/-/g, "+")
+          .replace(/_/g, "/")
+          .padEnd(Math.ceil(value.length / 4) * 4, "=");
+        return Uint8Array.from(atob(padded), (character) =>
+          character.charCodeAt(0),
+        );
+      }
+
+      function encodeBase64Url(bytes) {
+        return btoa(String.fromCharCode(...bytes))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+      }
+
+      document
+        .querySelector("#generate")
+        .addEventListener("click", async () => {
+          const contact = subject.value.trim();
+          if (
+            !contact.startsWith("mailto:") &&
+            !contact.startsWith("https://")
+          ) {
+            status.textContent = "Use um contato mailto: ou uma URL HTTPS.";
+            return;
+          }
+
+          try {
+            const pair = await crypto.subtle.generateKey(
+              { name: "ECDSA", namedCurve: "P-256" },
+              true,
+              ["sign", "verify"],
+            );
+            const privateJwk = await crypto.subtle.exportKey(
+              "jwk",
+              pair.privateKey,
+            );
+            const x = decodeBase64Url(privateJwk.x);
+            const y = decodeBase64Url(privateJwk.y);
+            const publicKey = new Uint8Array(65);
+            publicKey[0] = 4;
+            publicKey.set(x, 1);
+            publicKey.set(y, 33);
+
+            output.value = [
+              "WEB_PUSH_ENABLED=true",
+              `WEB_PUSH_SUBJECT=${contact}`,
+              `WEB_PUSH_PUBLIC_KEY=${encodeBase64Url(publicKey)}`,
+              `WEB_PUSH_PRIVATE_KEY=${privateJwk.d}`,
+            ].join("\n");
+            copy.disabled = false;
+            status.textContent = "Par VAPID gerado localmente.";
+          } catch {
+            status.textContent =
+              "O navegador não conseguiu gerar as chaves P-256.";
+          }
+        });
+
+      copy.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent =
+          "Configuração copiada. Cole somente no .env privado.";
+      });
+    </script>
+  </body>
+</html>
