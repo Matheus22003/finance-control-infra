@@ -184,6 +184,10 @@ pwsh -File .\tools\Enable-WebPushEnvironment.ps1
 pwsh -File .\tools\Invoke-ZimaOsFinanceControl.ps1 -Action SyncEnvironmentOnly
 ```
 
+O mesmo `FRONTEND_PUBLIC_URL` é a única origem autorizada pelo BFF para a
+negociação de notificações em tempo real. Assim, o navegador pode usar o hub
+público do BFF sem liberar CORS para origens arbitrárias.
+
 O script preserva um par existente. A opção `-Rotate` deve ser usada somente
 quando for necessário invalidar todas as inscrições atuais.
 
