@@ -104,6 +104,7 @@ jobs:
           sh -n deploy/zimaos/connect-beszel-heartbeat.sh
           sh -n deploy/zimaos/add-uptime-kuma-shortcut.sh
           sh -n deploy/zimaos/backup.sh
+          sh -n deploy/zimaos/auto-update.sh
           docker compose --env-file .env.example config --quiet
           docker compose --env-file .env.observability.example -f compose.observability.yml config --quiet
           docker compose --env-file .env.observability.example -f compose.observability.yml --profile agent config --quiet
