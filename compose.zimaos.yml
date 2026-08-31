@@ -135,6 +135,7 @@ services:
       Email__ApiKey: ${BREVO_API_KEY:?BREVO_API_KEY must be set}
       Email__TimeoutSeconds: ${BREVO_TIMEOUT_SECONDS:-30}
       Email__FrontendBaseUrl: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
+      Cors__AllowedOrigin: ${FRONTEND_PUBLIC_URL:?FRONTEND_PUBLIC_URL must be set}
       WebPush__Enabled: ${WEB_PUSH_ENABLED:-false}
       WebPush__Subject: ${WEB_PUSH_SUBJECT:-}
       WebPush__PublicKey: ${WEB_PUSH_PUBLIC_KEY:-}
