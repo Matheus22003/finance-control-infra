@@ -11,6 +11,28 @@ ZimaOS e três bancos PostgreSQL independentes no Neon. Os arquivos de OCI e
 Cloudflare permanecem como uma alternativa histórica não ativa. O ambiente
 local descrito abaixo permanece inalterado.
 
+## Posição na arquitetura
+
+Este repositório é o ponto de entrada para executar e publicar o sistema completo.
+Ele conecta os clientes ao BFF, mantém as redes internas e garante que cada
+serviço use somente seu próprio banco.
+
+### Mapa do projeto
+
+| Repositório | Papel |
+|---|---|
+| [`finance-control-frontend`](https://github.com/Matheus22003/finance-control-frontend) | SPA Angular |
+| [`finance-control-mobile`](https://github.com/Matheus22003/finance-control-mobile) | App nativo Expo |
+| [`finance-control-bff`](https://github.com/Matheus22003/finance-control-bff) | API pública |
+| [`finance-control-finance-service`](https://github.com/Matheus22003/finance-control-finance-service) | Domínio financeiro |
+| [`finance-control-debt-service`](https://github.com/Matheus22003/finance-control-debt-service) | Domínio de dívidas |
+| `finance-control-infra` | Compose, redes, bancos e deploy |
+| [`finance-control-docs`](https://github.com/Matheus22003/finance-control-docs) | Documentação central |
+
+Se você só quer iniciar o ambiente local, permaneça neste repositório e siga
+`docker compose up --build --detach --wait`. Para entender decisões e contratos,
+comece pelo README de `finance-control-docs`.
+
 ## Serviços
 
 | Serviço | Porta publicada | Acesso |
