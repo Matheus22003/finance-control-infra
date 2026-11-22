@@ -75,6 +75,9 @@ services:
       Email__FrontendBaseUrl: http://localhost:${FRONTEND_PORT:-4200}
       WebPush__Enabled: ${WEB_PUSH_ENABLED:-false}
       WebPush__Subject: ${WEB_PUSH_SUBJECT:-}
+      MobilePush__Enabled: ${MOBILE_PUSH_ENABLED:-true}
+      MobilePush__ExpoApiUrl: ${MOBILE_PUSH_EXPO_API_URL:-https://exp.host/--/api/v2/push/send}
+      MobilePush__TimeoutSeconds: ${MOBILE_PUSH_TIMEOUT_SECONDS:-10}
       WebPush__PublicKey: ${WEB_PUSH_PUBLIC_KEY:-}
       WebPush__PrivateKey: ${WEB_PUSH_PRIVATE_KEY:-}
       DemoUser__Email: ${BFF_DEMO_EMAIL:-demo@financecontrol.local}
